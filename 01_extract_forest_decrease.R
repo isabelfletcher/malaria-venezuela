@@ -48,7 +48,7 @@ revalue_ras <- function(file_1, file_2){
     }
   }
   # Save new raster to file
-  writeRaster(ras_2, gsub("input/bolivar/", paste0("output_test/"), file_2), overwrite = TRUE)
+  writeRaster(ras_2, gsub("input/bolivar/", paste0("output/"), file_2), overwrite = TRUE)
 }
 
 # Loop through all files
