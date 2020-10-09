@@ -7,8 +7,6 @@ bolivar <- subset(venezuela, venezuela$ESTADO == "Bolívar")
 
 files <- list.files(path = "input/bolivar", pattern = ".tif", full.names = TRUE)
 
-polygon <- subset(bolivar, bolivar$PARROQUIA == polygon_name & bolivar$MUNICIPIO == municipio_name)
-
 ######################################################
 # 1. Create new rasters of forest change 1996-2016
 revalue_ras <- function(file_1, file_2){
