@@ -50,8 +50,10 @@ model_estimates <- NULL
 model_fit       <- NULL
 model_sp         <- NULL
 
+# Loop through parasites
+parasites <- c("P. falciparum", "P. vivax")
 
-j <- "P. falciparum"
+for (i in parasites){
 
 # Condition on parasite
 if (j == "P. falciparum"){
@@ -94,7 +96,7 @@ mod <- inla(formula, data = df_inla, family = "zeroinflatednbinomial0",
             control.predictor = list(link = 1, compute = TRUE), 
             control.family = list(link = "log"))
 
-save(mod, file = "variable_testing/mod_mining.RData")
+save(mod, file = paste0("models/mod_mining", mod_filename, ".RData"))
 
 # Run model
 formula <- y ~ 1 + f(s1, model = "bym", graph = "map.graph") +
@@ -116,48 +118,6 @@ mod_w_mining <- inla(formula, data = df_inla, family = "zeroinflatednbinomial0",
                      control.predictor = list(link = 1, compute = TRUE), 
                      control.family = list(link = "log"))
 
-save(mod_w_mining, file = "variable_testing/mod_w_mining.RData")
+save(mod_w_mining, file = paste0("models/mod_w_mining", mod_filename, ".RData"))
 
-
-sp_df <- rbind(mod$summary.random$s1[1:46,] %>%
-        dplyr::select(mean, `0.025quant`, `0.5quant`, `0.975quant`) %>%
-        mutate(Parasite = j,
-               Model      = "With mining",
-               Parroquia  = bolivar$PARROQUIA,
-               Municipio  = bolivar$MUNICIPIO) %>%
-        dplyr::rename(lci = `0.025quant`,
-                      uci = `0.975quant`,
-                      mci = `0.5quant`) %>%
-        tibble::remove_rownames(),
-      mod_w_mining$summary.random$s1[1:46,] %>%
-        dplyr::select(mean, `0.025quant`, `0.5quant`, `0.975quant`) %>%
-        mutate(Parasite = j,
-               Model      = "Without mining",
-               Parroquia  = bolivar$PARROQUIA,
-               Municipio  = bolivar$MUNICIPIO) %>%
-        dplyr::rename(lci = `0.025quant`,
-                      uci = `0.975quant`,
-                      mci = `0.5quant`) %>%
-        tibble::remove_rownames())
-
-# Rename Dalla Costa parroquias (two municipalities)
-sp_df$Parroquia[sp_df$Municipio == "Sifontes" & sp_df$Parroquia == "Dalla Costa"] <- "Dalla Costa*"
-sp_df$Parroquia[sp_df$Municipio == "Caroní" & sp_df$Parroquia == "Dalla Costa"] <- "Dalla Costa†"
-
-ggplot(sp_df, aes(Parroquia)) + 
-  geom_hline(yintercept = 0, linetype = "dashed", size = 0.5) +
-  geom_linerange(aes(ymin = lci, ymax = uci, group = Model, colour = Model), size = 0.6, position = position_dodge(width = 0.5)) +
-  geom_point(aes(Parroquia, mean, group = Model, colour = Model), position = position_dodge(width = 0.5)) +
-  theme_classic() + 
-  ylab("Relative risk (log API)") + xlab("Parroquia") +
-  facet_wrap(~Parasite, scales = "free") +
-  theme(strip.text = element_text(face = "italic"),
-        panel.grid.major = element_blank(), 
-        panel.grid.minor = element_blank(),
-        axis.line = element_blank(),
-        panel.background = element_rect(colour = "black", fill = NA, size=0.5)) +
-  scale_x_discrete(labels = wrap_format(10)) +
-  xlim(unique(sp_df$Parroquia)) +
-  scale_fill_manual(values = c("#6872A1", "#AFBCE8")) +
-  scale_colour_manual(values = c("#6872A1", "#AFBCE8")) +
-  coord_flip()
+}
