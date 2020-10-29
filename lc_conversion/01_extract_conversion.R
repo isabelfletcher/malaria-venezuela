@@ -109,3 +109,17 @@ for (p in 1:length(parroquias)){
   
 }
 
+#############################
+# Combine data into single file
+files <- list.files("output", full.names = TRUE, pattern = ".RData")
+
+load(files[1])
+data <- change_df
+
+for (i in 2:length(files)){
+  load(files[i])
+  data <- rbind(data, change_df)
+}
+
+data <- subset(data, data$Year == 2016) %>% dplyr::select(-Year)
+save(data, file = "output/data.RData")
