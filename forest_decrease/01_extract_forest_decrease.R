@@ -128,4 +128,4 @@ for (i in 1:length(parroquias)){
 ######################################################
 # 3. Calculate cumulative forest decrease and save data
 
-data %>% mutate(forest_decrease_cum = cumsum(forest_decrease)) %>% write.csv("input/data.csv")
+data %>% mutate(forest_decrease_cum = cumsum(forest_decrease)) %>% write.csv("output/data.csv")
