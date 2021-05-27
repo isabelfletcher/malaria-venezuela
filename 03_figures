@@ -1,0 +1,670 @@
+# Load libraries
+pacman::p_load("dplyr", "ggplot2", "tidyr",
+               "rgdal", "ggpubr", "sf", "raster",
+               "cowplot", "scales", "forcats",
+               "ggspatial", "ggplot2", "rnaturalearth",
+               "rnaturale", "lubridate", "gridExtra",
+               "reshape2")
+
+############################################################
+
+## Fig. 1
+
+############################################################
+
+# Location map
+bolivar <- getData("GADM", country = "ven", level = 1) %>% subset(NAME_1 == "Bolívar")
+
+# Get world map
+world <- ne_countries(scale = "medium", returnclass = "sf")
+world_points <- st_centroid(world)
+world_points <- cbind(world, st_coordinates(st_centroid(world$geometry)))
+
+# Subset to region of interest
+world_points <- world_points %>% subset(subregion != "Caribbean")
+
+# Relocate name labels to plot in map region
+world_points$X[world_points$name == "Brazil"] <- -62
+world_points$Y[world_points$name == "Brazil"] <- 1
+world_points$Y[world_points$name == "Venezuela"] <- 9
+world_points$Y[world_points$name == "Guyana"] <- 6
+
+location_map <- 
+  ggplot(data = world) +
+  geom_sf(fill= "antiquewhite") +
+  geom_sf(data = st_as_sf(bolivar), fill = "rosybrown") +
+  theme_bw() +
+  # Plot country labels
+  geom_text(data= world_points,aes(x = X, y = Y, label = name),
+            color = "darkblue", fontface = "bold", 
+            check_overlap = FALSE, size = 2) +
+  annotate("text", x = -63, y = 6, label = "Bolívar\nstate", color = "darkblue", size = 2) +
+  theme(panel.grid.major = element_line(color = gray(0.3), linetype = "dashed", size = 0.3), 
+        panel.background = element_rect(fill = "aliceblue"),
+        axis.text = element_text(size = 8), 
+        axis.title = element_text(size = 9), 
+        plot.margin = unit(c(0.02, 0.02, 0, 0.02),"cm")) +
+  # Scale bar and arrow
+  annotation_scale(location = "bl", width_hint = 0.25,
+                   height = unit(0.15, "cm")) +
+  annotation_north_arrow(location = "bl", which_north = "true", 
+                         pad_x = unit(1.66, "in"), pad_y = unit(1, "in"),
+                         style = north_arrow_fancy_orienteering) +
+  coord_sf(xlim = c(-75, -55), ylim = c(-1, 14)) +
+  xlab("Longitude") + ylab("Latitude")
+
+
+# API timeseries by municipality
+data <- read.csv("data/inla_input/data.csv") %>% dplyr::select(Year, Month, Municipio, Parroquia, PV, PF, Population) %>%
+  mutate(Date = make_date(Year, Month))
+
+bolivar <- sf::st_read("data/ven_shp/Parroquias_Venezuela.shp") %>% subset(ESTADO == "Bolívar")
+bolivar_sf <- bolivar %>% st_as_sf()
+
+bolivar_0 <- getData("GADM", country = "VEN", level = 1) %>% subset(NAME_1 == "Bolívar") %>% st_as_sf()
+
+plot_timeseries_municipality <- function(municipio, legend_position){
+  
+  polygon_sf <- bolivar_sf %>% subset(MUNICIPIO == municipio)
+  
+  # Polygon map
+  map <- 
+    ggplot(data = bolivar_0) +
+    geom_sf(colour = "grey30", fill = "white", size = 0.2) +
+    #geom_sf(data = polygon_sf, colour = "#571B57", fill = "#571B57") +
+    geom_sf(data = polygon_sf, colour = "grey50", fill = "grey50") +
+    theme_void()
+  
+  # Plot API
+  timeseries <- 
+    data %>% subset(Municipio == municipio) %>%
+    dplyr::group_by(Year, Month, Date, Municipio) %>%
+    dplyr::summarise(PF = sum(PF, na.rm = TRUE),
+                     PV = sum(PV, na.rm = TRUE),
+                     Population = sum(Population, na.rm = TRUE)) %>%
+    dplyr::mutate(api_pf = PF * 1000/Population,
+                  api_pv = PV * 1000/Population) %>%
+    replace_na(list(api_pf = 0, api_pv = 0)) %>%
+    ggplot(aes(Date)) + 
+    geom_line(aes(y = api_pf, colour = "api_pf"), size = 0.4) +
+    geom_line(aes(y = api_pv, colour = "api_pv"), size = 0.4) +
+    xlab("") + ylab("") + 
+    facet_wrap(~Municipio,
+               labeller = label_wrap_gen(18),
+               scales = "free_y") +
+    theme_classic() +
+    scale_y_continuous(labels = comma) + 
+    theme(axis.text.x = element_text(angle = 90),
+          strip.text = element_text(colour = "black", size = 10),
+          strip.background = element_blank(),
+          legend.position = legend_position,
+          legend.title = element_blank(),
+          legend.text = element_text(size = 12),
+          axis.text = element_text(size = 8),
+          axis.line = element_line(size = 0.2), 
+          axis.ticks = element_line(size = 0.1), 
+          plot.margin = unit(c(0.02, 0.02, 0.02, 0.02),"cm")) +
+    scale_x_date(labels = date_format("%Y"),
+                 expand = c(0,0),
+                 breaks = date_breaks("2 years")) +
+    scale_colour_manual(values = c("#571B57", "#B888B8"),
+                        labels = c(expression("API"[italic("pf")]), 
+                                   expression("API"[italic("pv")]))) +
+    # Make legend line width thicker
+    guides(colour = guide_legend(order = 1, override.aes = list(size = 2)))
+  
+  plot <- 
+    ggdraw() +
+    draw_plot(timeseries) +
+    draw_plot(map, 0.15, 0.65, width = 0.2, height = 0.2) 
+  
+  return(plot)
+}
+
+# Combine
+api_timeseries <-
+  grid.arrange(plot_timeseries_municipality(unique(bolivar$MUNICIPIO)[2], "none"),
+               plot_timeseries_municipality(unique(bolivar$MUNICIPIO)[9], "none"),
+               plot_timeseries_municipality(unique(bolivar$MUNICIPIO)[10], "none"),
+               plot_timeseries_municipality(unique(bolivar$MUNICIPIO)[11], "none"),
+               plot_timeseries_municipality(unique(bolivar$MUNICIPIO)[4], "none"),
+               plot_timeseries_municipality(unique(bolivar$MUNICIPIO)[1], "none"),
+               plot_timeseries_municipality(unique(bolivar$MUNICIPIO)[3], "none"),
+               plot_timeseries_municipality(unique(bolivar$MUNICIPIO)[8], "none"),
+               plot_timeseries_municipality(unique(bolivar$MUNICIPIO)[7], "none"),
+               plot_timeseries_municipality(unique(bolivar$MUNICIPIO)[6], "none"),
+               plot_timeseries_municipality(unique(bolivar$MUNICIPIO)[5], c(1.5, 0.8)),
+               nrow = 4)
+# Map of API
+data <- read.csv("data/inla_input/data.csv")
+
+# Calculate API in 2016
+data <- data %>% subset(Year == 2016) %>%
+  dplyr::group_by(Municipio, Parroquia) %>%
+  # Sum over months
+  dplyr::summarise(PF = sum(PF, na.rm = TRUE),
+                   PV = sum(PV, na.rm = TRUE),
+                   # Population data are repeated for months
+                   Population = mean(Population, na.rm = TRUE)) %>%
+  # Calculate API
+  mutate(API_pf = PF * 1000/Population,
+         API_pv = PV * 1000/Population) %>% 
+  # Rename to merge with shapefile
+  dplyr::rename(MUNICIPIO = Municipio,
+                PARROQUIA = Parroquia) %>%
+  dplyr::select(-Population, -PF, -PV) %>%
+  melt(id.vars = c("PARROQUIA", "MUNICIPIO"), value.name = "API") %>%
+  mutate(API_log = log(API)) %>% 
+  replace_na(list(API_log = 0)) %>%
+  mutate(Parasite = recode(variable, 
+                           "API_pf" = "P. falciparum",
+                           "API_pv" = "P. vivax")) %>%
+  merge(bolivar, by = c("PARROQUIA", "MUNICIPIO")) 
+
+data$API_log[data$API_log == "-Inf"] <- 0
+
+api_map <- 
+  data %>% st_as_sf() %>%
+  ggplot() + geom_sf(aes(fill = API_log), size = 0,
+                     colour = "transparent") +
+  theme_classic() +
+  facet_wrap(~Parasite, ncol = 2) + 
+  scale_fill_gradient2(name = "log API ",
+                       guide = guide_colourbar(ticks = FALSE,
+                                               barheight = 1,
+                                               barwidth = 6,
+                                               direction = "horizontal", 
+                                               title.position = "top",
+                                               frame.colour = "black",
+                                               frame.linewidth = 1),
+                       high = "#91103B",
+                       mid  = "#E9C4D1",
+                       low  = "white", 
+                       midpoint = 0, 
+                       limit = c(-8, 8.1),
+                       breaks = seq(-8, 8, 4),
+                       labels = seq(-8, 8, 4)) + 
+  ylab("") + xlab("") +
+  theme(axis.line = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        legend.position = c(0.55, 0.05),
+        legend.title = element_text(hjust = 0.5),
+        legend.background = element_blank(),
+        strip.background = element_blank(),
+        strip.text = element_text(face = "italic", colour = "black", 
+                                  size = 12),
+        plot.margin = unit(c(0, 0.0, 0, 0),"lines"))
+
+# Arrange plots
+p1 <- plot_grid(location_map, api_map,
+                align = "hv", axis = "bt",
+                labels = c("A", "B"),
+                label_size = 20,
+                rel_widths = c(0.5, 1),
+                rel_heights = c(1, 2)) +
+  theme(plot.margin = unit(c(0, 0, 0.12, 0.05),"lines"))
+
+p <- plot_grid(p1, plot_grid(api_timeseries, labels = "C",
+                             label_size = 20, vjust = 0.2),
+               nrow = 2,
+               rel_heights = c(1, 2)) +
+  geom_text(data = data.frame(x = 0.5, y = 0.015, label = "Time"),
+            mapping = aes(x = x, y = y, label = label),
+            size = 4, inherit.aes = FALSE) + 
+  geom_text(data = data.frame(x = 0.012, y = 0.35, label = "API"),
+            mapping = aes(x = x, y = y, label = label),
+            size = 4, angle = 90L, inherit.aes = FALSE) +
+  geom_text(data = data.frame(x = 0.518620524686926, y = 0.684701787310243, label = "Municipality"),
+            mapping = aes(x = x, y = y, label = label),
+            size = 4,
+            inherit.aes = FALSE)
+
+
+# Using ggannotate to find location of labels
+#ggannotate::ggannotate(p)
+ggsave("figures/fig1", p, device = "tiff", width = 8, height = 8, units = "in", dpi = 300)
+
+############################################################
+
+## Fig. 2
+
+############################################################
+
+# Model estimates
+load("models/bym2/mods_w_nino/models_nonlinear/mod_pf.RData") 
+mod_pf <- mod
+load("models/bym2/mods_w_nino/models_nonlinear/mod_pv.RData")
+mod_pv <- mod
+
+estimates <- 
+  rbind(mod_pf$summary.fixed %>%
+          dplyr::select(mean, `0.025quant`, `0.975quant`) %>%
+          mutate(Parasite = "P. falciparum",
+                 Variable = rownames(mod_pf$summary.fixed)) %>%
+          dplyr::slice(-1) %>% 
+          dplyr::rename(lci = `0.025quant`,
+                        uci = `0.975quant`),
+        mod_pv$summary.fixed %>%
+          dplyr::select(mean, `0.025quant`, `0.975quant`) %>%
+          mutate(Parasite = "P. vivax",
+                 Variable = rownames(mod_pv$summary.fixed)) %>%
+          dplyr::slice(-1) %>% 
+          dplyr::rename(lci = `0.025quant`,
+                        uci = `0.975quant`)) %>%
+  mutate(Variable = recode(Variable, 
+                           "forest_decrease" = "Deforestation",
+                           "health_travel"   = "Healthcare inaccessibility",
+                           "mines"           = "Mining",
+                           "urbanization"    = "Urbanization",
+                           "nino"            = "Niño 3.4")) %>%
+  # Order
+  mutate(Variable = factor(Variable, levels = c("Urbanization",
+                                                "Niño 3.4",
+                                                "Healthcare inaccessibility",
+                                                "Deforestation",
+                                                "Mining"))) %>%
+  ggplot(aes(Variable, colour = Parasite)) +
+  geom_hline(yintercept = 1, linetype = "dashed", colour = "grey", size = 0.2) +
+  geom_linerange(aes(ymin = exp(lci), ymax = exp(uci)), position = position_dodge(width = 0.3), size = 0.3) +
+  geom_point(aes(x = Variable, y = exp(mean)), shape = 16, position = position_dodge(width = 0.3), size = 0.6) + 
+  xlab("Model covariate") + ylab("Coefficient estimate") +
+  scale_colour_manual(values = c("#571B57", "#B888B8")) +
+  coord_flip() + 
+  scale_y_continuous(name = "Relative risk",
+                     position = "right",
+                     #limits = c(-0.6, 1.8),
+                     #breaks = seq(-0.6, 1.8, 0.4),
+                     breaks = seq(-0.5, 4.5, 0.5),
+                    # labels = seq(-0.6, 1.8, 0.4),
+                     expand = c(0,0)) +
+  theme_classic() +
+  theme(plot.margin = unit(c(0.2, 1, 0, 0.1),"cm"),
+        legend.text = element_text(face = "italic", size = 4),
+        legend.position = c(1, 0.2),
+        legend.background = element_blank(),
+        legend.key = element_blank(),
+        legend.title = element_blank(),
+        legend.key.height =unit(0.4,"cm"),
+        legend.key.width = unit(0.4,"cm"),
+        axis.line.y = element_blank(),
+        axis.line.x = element_line(size = 0.2),
+        axis.ticks.x = element_line(size = 0.2),
+        axis.ticks.y = element_blank(),
+        axis.text = element_text(size = 4),
+        axis.title = element_text(size = 5))  
+
+
+# Mining
+bolivar <- rgdal::readOGR("data/ven_shp", "Parroquias_Venezuela") %>% subset(ESTADO == "Bolívar")
+
+data <- read.csv("data/inla_input/data.csv") %>%
+  subset(Month == 1 & Year == 2016) %>%
+  dplyr::select(Parroquia, Municipio, total_mines) %>%
+  dplyr::rename(mines = total_mines,
+                PARROQUIA = Parroquia,
+                MUNICIPIO = Municipio) %>% 
+  tibble::remove_rownames() 
+
+# Merge with shapefile
+data_sp <- merge(bolivar, data, by = c("PARROQUIA", "MUNICIPIO")) %>% st_as_sf()
+
+# Read in points data and select coordinates
+pts <- rbind(read.csv("data/mining/mining_pts.csv") %>% dplyr::select(X, Y),
+             read.csv("data/mining/mining_illegal_pts.csv") %>% dplyr::select(X, Y)) %>%
+  drop_na()
+
+# Convert to sp object
+pts <- SpatialPoints(pts, proj4string=CRS("+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0"))
+proj4string(bolivar) <- CRS("+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")
+
+# Extract over Bolivar
+extracted_points <- over(pts, bolivar)
+extracted_points$X <- pts@coords[,1]
+extracted_points$Y <- pts@coords[,2]
+
+# Remove points not in polygons (NAs)
+pts_in <- extracted_points[!is.na(extracted_points),]
+
+mining_map <- data_sp %>% ggplot() + 
+  geom_sf(aes(fill = mines), colour = "black", size = 0.05) +
+  geom_point(data = pts_in, aes(x=X,y=Y, colour = ESTADO),
+             size = 0.002, alpha = 1) +
+  theme_void() +
+  ylab("") + xlab("") +
+  theme(legend.text = element_blank(),
+        legend.background = element_blank(),
+        legend.title = element_text(size = 5),
+        legend.title.align = 0.1,
+        legend.position = c(0.10, 0.15),
+        legend.direction = "horizontal",
+        legend.key.height =unit(0,"cm"),
+        legend.key.width = unit(0,"cm"),
+        plot.margin = unit(c(0,0.9,0.5,0.5),"cm")) +
+  guides(colour = guide_legend(order = 1, override.aes = list(size=0.8))) +
+  scale_fill_gradient(name = c(expression(paste("High mining") %->% paste(""))),
+                      low = "#D7CFDE",
+                      high = "#6d6875",
+                      guide = guide_colourbar(ticks = FALSE,
+                                              barheight = 0.6,
+                                              barwidth = 3,
+                                              title.position = "top",
+                                              frame.colour = "black",
+                                              frame.linewidth = 0.2)) +
+  scale_colour_manual(name = "Mining sites",
+                      values = c("grey35", "transparent")) 
+# Add table of labels
+tb <- data.frame(label = c(1:10),
+                 Parroquia = c("Barceloneta", "Ikabarú",
+                               "San Isidro", "Gran Sabana",
+                               "Dalla Costa", "Sifontes",
+                               "Roscio", "Guaniamo",
+                               "El Callao", "Pedro Cova"))
+table <- tableGrob(tb, theme = ttheme_minimal(base_size = 4,
+                                              padding = unit(c(1, 1), "mm"),
+                                              core=list(fg_params=list(hjust=0, x=0))),
+                   rows = NULL, cols = NULL)
+map <- ggdraw() +
+  draw_plot(mining_map) +
+  draw_plot(table, 0.87, 0.37, 0.01, 0.01) 
+
+
+### Load models
+files <- list.files("models/bym2/mods_w_nino/models_nonlinear", full.names = TRUE, pattern = "mod_w_mining_p") 
+
+df_w_mining <- NULL
+for (i in files){
+  
+  load(i)
+  
+  if(grepl("pf", i)==TRUE){
+    parasite <- "P. falciparum" 
+  } else {
+    parasite <- "P. vivax"
+  }
+  
+  # Combine into df
+  df_w_mining <- rbind(df_w_mining, 
+                       mod$summary.random$s1[1:46,] %>%
+                         mutate(Parasite = parasite,
+                                Model    = "without mining") %>%
+                         dplyr::rename(lci = `0.025quant`,
+                                       uci = `0.975quant`) %>%
+                         mutate(Parroquia = bolivar$PARROQUIA,
+                                Municipio = bolivar$MUNICIPIO) %>%
+                         dplyr::select(Parroquia, Municipio, mean, uci, lci, Parasite, Model))
+}
+
+files <- list.files("models/bym2/mods_w_nino/models_nonlinear", full.names = TRUE, pattern = "mod_p")
+
+df_mining <- NULL
+for (i in files){
+  
+  load(i)
+  
+  if(grepl("pf", i)==TRUE){
+    parasite <- "P. falciparum" 
+  } else {
+    parasite <- "P. vivax"
+  }
+  
+  # Combine into df
+  df_mining <- rbind(df_mining, 
+                     mod$summary.random$s1[1:46,] %>%
+                       mutate(Parasite = parasite,
+                              Model    = "with mining") %>%
+                       dplyr::rename(lci = `0.025quant`,
+                                     uci = `0.975quant`) %>%
+                       mutate(Parroquia = bolivar$PARROQUIA,
+                              Municipio = bolivar$MUNICIPIO) %>%
+                       dplyr::select(Parroquia, Municipio, mean, uci, lci, Parasite, Model))
+}
+
+mining_df <- rbind(df_mining, df_w_mining)
+mining_df$Parroquia <- as.character(mining_df$Parroquia)
+mining_df$Parroquia[mining_df$Municipio == "Sifontes" & mining_df$Parroquia == "Dalla Costa"] <- "Dalla Costa*"
+mining_df$Parroquia[mining_df$Municipio == "Caroní" & mining_df$Parroquia == "Dalla Costa"] <- "Dalla Costa†"
+
+# Arrange by high mining
+mining <- read.csv("data/inla_input/data.csv") %>% 
+  subset(Year == 2016 & Month == 1) %>%
+  dplyr::select(total_mines, Parroquia, Municipio) %>%
+  dplyr::arrange(-total_mines) 
+
+mining$Parroquia <- as.character(mining$Parroquia)
+mining$Parroquia[mining$Municipio == "Sifontes" & mining$Parroquia == "Dalla Costa"] <- "Dalla Costa*"
+mining$Parroquia[mining$Municipio == "Caroní" & mining$Parroquia == "Dalla Costa"] <- "Dalla Costa†"
+
+data <- merge(mining_df, mining, by = c("Municipio", "Parroquia"), all = TRUE)
+
+# Rename Dalla Costa parroquias (two municipalities)
+data$Parroquia <- as.character(data$Parroquia)
+data$Parroquia[data$Municipio == "Sifontes" & data$Parroquia == "Dalla Costa"] <- "Dalla Costa*"
+data$Parroquia[data$Municipio == "Caroní" & data$Parroquia == "Dalla Costa"] <- "Dalla Costa†"
+
+# Sort df by mining
+data <- data %>% dplyr::group_by(Parroquia, Municipio) %>%
+  arrange(-total_mines) 
+
+# Select 10 parroquias with highest mining activity
+df <- NULL
+for (i in mining$Parroquia[1:10]){
+  
+  df <- rbind(df,
+              data %>% subset(Parroquia == i)) %>%
+    subset(Parasite == "P. falciparum" | Parasite == "P. vivax") %>%
+    arrange(total_mines)
+  
+}
+
+# Remove * for plotting
+df$Parroquia[df$Municipio == "Sifontes" & df$Parroquia == "Dalla Costa*"] <- "Dalla Costa"
+
+df$Parroquia[df$Parroquia == "Barceloneta"] <- "1 Barceloneta"
+df$Parroquia[df$Parroquia == "Ikabarú"] <- "2 Ikabarú"
+df$Parroquia[df$Parroquia == "San Isidro"] <- "3 San Isidro"
+df$Parroquia[df$Parroquia == "Gran Sabana"] <- "4 Gran Sabana"
+df$Parroquia[df$Parroquia == "Dalla Costa"] <- "5 Dalla Costa"
+df$Parroquia[df$Parroquia == "Sifontes"] <- "6 Sifontes"
+df$Parroquia[df$Parroquia == "Roscio"] <- "7 Roscio"
+df$Parroquia[df$Parroquia == "Guaniamo"] <- "8 Guaniamo"
+df$Parroquia[df$Parroquia == "El Callao"] <- "9 El Callao"
+df$Parroquia[df$Parroquia == "Pedro Cova"] <- "10 Pedro Cova"
+
+cols <- RColorBrewer::brewer.pal(11, "BrBG")
+
+## Plot
+mining_models <-  
+  ggplot(df, aes(Parroquia)) + 
+  geom_hline(yintercept = 0, linetype = "dashed", size = 0.1) +
+  geom_linerange(aes(ymin = lci, ymax = uci, group = Model, colour = Model), size = 0.3, position = position_dodge(width = 0.5), alpha = 0.5) +
+  geom_point(aes(Parroquia, mean, group = Model, colour = Model), position = position_dodge(width = 0.5), size = 0.3, alpha = 0.5) +
+  theme_light() + 
+  ylab("Marginal effect (log API)") + xlab("") +
+  facet_wrap(~Parasite, scales = "fixed") +
+  theme(strip.text = element_text(face = "italic", colour = "black", size = 6),
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        strip.background = element_blank(),
+        legend.position = c(1.11,0.6),
+        legend.text = element_text(size = 5),
+        legend.title = element_text(size = 6),
+        legend.key.height =unit(0.3,"cm"),
+        legend.key.width = unit(0.3,"cm"),
+        legend.background = element_blank(),
+        axis.text = element_text(size = 5),
+        axis.title = element_text(size = 6),
+        plot.margin = unit(c(0.2,1.8,0.2,0.2),"cm")) +
+  scale_x_discrete(labels = wrap_format(10)) +
+  xlim(as.character(unique(df$Parroquia))) +
+  scale_fill_manual(values = c(cols[2], cols[10])) +
+  scale_colour_manual(values = c(cols[2], cols[10])) +
+  #scale_fill_manual(values = c("#6872A1", "#AFBCE8")) +
+  #scale_colour_manual(values = c("#6872A1", "#AFBCE8")) +
+  coord_flip()
+
+mining_models <- 
+  annotate_figure(mining_models,
+                  left = text_grob(c(expression(paste("Increasing mining activity") %->% paste(""))), size = 5,
+                                   hjust = 0.5, 
+                                   rot = 90,
+                                   vjust = 3.3)) 
+# Combine 
+p <- ggpubr::ggarrange(ggpubr::ggarrange(estimates, map,
+                                         nrow = 1, ncol = 2,
+                                         labels = c("A", "B"),
+                                         font.label = list(size = 9)),
+                       mining_models, ncol = 1, nrow = 2,
+                       labels = c("", "C"), font.label = list(size = 9)) 
+
+# Add labels
+#ggannotate::ggannotate(p)
+p + geom_label(data.frame(x = c(0.77,   0.812, 0.815, 0.642, 0.825, 0.788, 0.832, 0.804, 0.86,  0.86),
+                          y = c(0.62,   0.87,  0.81,  0.85,  0.665, 0.855, 0.86, 0.795, 0.89, 0.73),
+                          label = c("1", "7",  "5",    "8",   "2",  "10",  "9",   "3",   "6",  "4")),
+               mapping = aes(x = x, y = y, label = label),
+               size = 1, fill = "white",
+               label.size = 0.08,
+               label.padding = unit(0.04, "lines"),
+               label.r = unit(0.03, "lines"),
+               inherit.aes = FALSE)
+
+ggsave("figures/fig2", device = "tiff", width = 12, height = 8, units = "cm", dpi = 1500) 
+
+
+############################################################
+
+## Fig. 3
+
+############################################################
+
+# API in 2016 in mining vs. non-mining areas
+data <- read.csv("data/inla_input/data.csv") %>% dplyr::select(Year, Month, Municipio, Parroquia, PV, PF, Population, total_mines)
+
+data$mining_cat[data$total_mines <= 2] <- "low mining"
+data$mining_cat[data$total_mines > 2] <- "high mining"
+
+cols <- RColorBrewer::brewer.pal(11, "BrBG")
+
+box_plot <-  
+  ggpubr::ggarrange(data %>% 
+                      subset(Year == 2016) %>%
+                      dplyr::group_by(Municipio, Parroquia, mining_cat) %>%
+                      dplyr::summarise(Population = mean(Population, na.rm = TRUE),
+                                       PF = sum(PF, na.rm = TRUE),
+                                       PV = sum(PV, na.rm = TRUE)) %>%
+                      # Calculate API
+                      mutate(API_pf = PF * 1000/Population,
+                             API_pv = PV * 1000/Population) %>% 
+                      mutate(API_pf = log(API_pf),
+                             API_pv = log(API_pv)) %>%
+                      replace(is.na(.), 0) %>%
+                      dplyr::select(-PV, -PF, -Population) %>%
+                      melt(id.vars = c("mining_cat", "Parroquia", "Municipio")) %>%
+                      mutate(parasite = fct_recode(variable, "P. falciparum" = "API_pf",
+                                                   "P. vivax" = "API_pv"),
+                             mining_cat = fct_relevel(mining_cat, "high mining", after = 1)) %>%
+                      ggplot(aes(parasite, value, fill = mining_cat)) +
+                      geom_boxplot(position=position_dodge(1), alpha = 0.5) +
+                      geom_dotplot(binaxis='y', stackdir='center', dotsize=0.5, position=position_dodge(1), alpha = 0.5,
+                                   colour = "black") +
+                      theme_light() +
+                      xlab("") + ylab("log API") +
+                      theme(legend.title = element_blank(),
+                            axis.text.x = element_text(face = "italic")) +
+                      scale_fill_manual("", values=c(cols[10], cols[2])),
+                    labels = c("A"), font.label = list(size = 16))
+
+#######################################################################
+# Interactions between climate and deforestation
+files <- list.files("models/bym2/mods_w_nino/models_nonlinear", full.names = TRUE, pattern = "mod_p")
+data <- read.csv("data/inla_input/data.csv")
+
+df <- NULL
+for (i in files){
+  load(i)
+  if(grepl("pf", i)==TRUE){
+    parasite <- "P. falciparum" 
+  } else {
+    parasite <- "P. vivax"
+  }
+  
+  # Combine into df
+  df <- rbind(df, 
+              mod$summary.random$`inla.group(temp)` %>%
+                mutate(Parasite = parasite,
+                       Variable = "temperature") %>%
+                dplyr::rename(lci = `0.025quant`,
+                              uci = `0.975quant`) %>%
+                dplyr::select(ID, mean, uci, lci, Parasite, Variable) %>%
+                # Rescale 
+                mutate(ID = ID*sd(data$temp_avg) + mean(data$temp_avg)) %>%
+                mutate(mining = c(rep("low mining", 25),
+                                  rep("high mining", 25))) %>% 
+                mutate(mining = factor(mining, levels = c("low mining", "high mining"))),
+              mod$summary.random$`inla.group(prcp)` %>%
+                mutate(Parasite = parasite,
+                       Variable = "precipitation") %>%
+                dplyr::rename(lci = `0.025quant`,
+                              uci = `0.975quant`) %>%
+                dplyr::select(ID, mean, uci, lci, Parasite, Variable) %>%
+                # Rescale 
+                mutate(ID = ID*sd(data$prcp_avg) + mean(data$prcp_avg)) %>%
+                mutate(mining = c(rep("low mining", 25),
+                                  rep("high mining", 25))) %>% 
+                mutate(mining = factor(mining, levels = c("low mining", "high mining"))))
+  
+  
+}
+
+# Plot
+climate_plot <- ggpubr::ggarrange(ggpubr::ggarrange(
+  df %>% subset(Variable == "temperature") %>%
+    ggplot() + 
+    geom_hline(yintercept = 1, colour = "grey50", size = 0.3,
+               linetype = "dashed") +
+    geom_ribbon(aes(ymin=exp(uci), ymax=exp(lci), x=ID, fill = mining, group = mining), alpha = 0.2) +
+    geom_line(aes(x= ID, y=exp(mean), colour = mining, group = mining)) +
+    theme_light() +
+    scale_colour_manual("", values=c(cols[10], cols[2])) +
+    scale_fill_manual("", values=c(cols[10], cols[2])) +
+    xlab("Average temperature (°C)") + 
+    ylab("Marginal effect\n(API)") +
+    facet_grid(Parasite~mining, 
+               scales = "fixed") +
+    theme(legend.position = "none",
+          plot.margin=unit(c(0.5, 0.5, 0.5, 0.5),"cm"),
+          strip.text.y = element_text(face = "italic", colour = "grey20", size = 11),
+          strip.text.x = element_text(colour = "grey20", size = 11),
+          strip.background = element_blank()) +
+    scale_x_continuous(breaks = seq(20, 30, 2),
+                       labels = seq(20, 30, 2),
+                       expand = c(0,0)),
+  df %>% subset(Variable == "precipitation") %>%
+    ggplot() + 
+    geom_hline(yintercept = 1, colour = "grey50", size = 0.3,
+               linetype = "dashed") +
+    geom_ribbon(aes(ymin=exp(uci), ymax=exp(lci), x=ID, fill = mining, group = mining), alpha = 0.2) +
+    geom_line(aes(x= ID, y=exp(mean), colour = mining, group = mining)) +
+    theme_light() +
+    scale_colour_manual("", values=c(cols[10], cols[2])) +
+    scale_fill_manual("", values=c(cols[10], cols[2])) +
+    xlab("Average precipitation (mm/day)") + 
+    ylab("Marginal effect\n(API)") +
+    facet_grid(Parasite~mining, 
+               scales = "fixed") +
+    theme(legend.position = "none",
+          strip.text.y = element_text(face = "italic", colour = "grey20", size = 11),
+          strip.text.x = element_text(colour = "grey20", size = 11),
+          strip.background = element_blank()) +
+    scale_x_continuous(breaks = seq(0, 20, 5),
+                       labels = seq(0, 20, 5),
+                       expand = c(0,0)),
+  labels = c("B", "C"),
+  font.label = list(size = 16)))
+
+plot_grid(box_plot, climate_plot, 
+          ncol = 1, nrow = 2,
+          rel_heights = c(0.75, 1),
+          rel_widths = c(0.65, 1))
+ggsave("figures/fig3", device = "tiff", width = 7, height = 6, units = "in", dpi = 300)
