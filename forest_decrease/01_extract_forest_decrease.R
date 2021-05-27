@@ -126,6 +126,8 @@ for (i in 1:length(parroquias)){
 }
 
 ######################################################
-# 3. Calculate cumulative forest decrease and save data
+# 3. Calculate cumulative forest decrease and save data 
 
-data %>% mutate(forest_decrease_cum = cumsum(forest_decrease)) %>% write.csv("output/data.csv")
+data %>% dplyr::select(Year, Parroquia, Municipio, forest_decrease_annual) %>% 
+  dplyr::group_by(Parroquia, Municipio) %>%
+  mutate(forest_decrease_cum = cumsum(forest_decrease_annual)) %>% write.csv("data_output/data.csv")
