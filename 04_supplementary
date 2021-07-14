@@ -465,54 +465,8 @@ ggsave("figures/supplementary/figS5", device = "tiff", width = 6, height = 3.5, 
 ## Fig. S6
 
 ############################################################
-load("data/land_use/forest_decrease/forest_conversion.RData")
-bolivar <- rgdal::readOGR("data/ven_shp", "Parroquias_Venezuela") %>% subset(ESTADO == "Bolívar")
-
-### Identify what forest cover changed to and where
-data <- data %>% subset(Change == "Change") %>% 
-  mutate(from_value = gsub(" to.*", "", Conversion),
-         to_value = gsub(".*to", "", Conversion)) %>% 
-  subset(from_value == "Tree cover") %>% 
-  dplyr::select(x, y, to_value) 
-
-mining <- read.csv("data/inla_input/data.csv") %>%
-  subset(Month == 1 & Year == 2016) %>%
-  dplyr::select(Parroquia, Municipio, total_mines) %>%
-  dplyr::rename(mines = total_mines,
-                PARROQUIA = Parroquia,
-                MUNICIPIO = Municipio) %>% 
-  tibble::remove_rownames() 
-
-# Merge with shapefile
-data_sp <- merge(bolivar, mining, by = c("PARROQUIA", "MUNICIPIO")) %>% st_as_sf()
-
-ggplot() + 
-  geom_sf(data = data_sp, aes(fill = mines), colour = "black", size = 0.05) +
-  geom_point(data = as_data_frame(data), aes(x=x,y=y, colour = to_value),
-             size = 0.5, alpha = 1) +
-  theme_void() +
-  ylab("") + xlab("") +
-  theme(legend.background = element_blank(),
-        plot.margin = unit(c(0,0.9,0.5,0.5),"cm")) +
-  guides(colour = guide_legend(order = 1, override.aes = list(size=0.8))) +
-  scale_fill_gradient(name = "Number of mines",
-                      low = "white",
-                      high = "grey50",
-                      guide = guide_colourbar(ticks = FALSE,
-                                              frame.colour = "black",
-                                              frame.linewidth = 0.2)) +
-  scale_colour_manual(name   = "Forest conversion",
-                      values = c("#264653", "#2A9D8F", "#E9C46A", "#F4A261", "#D7431D")) +
-  guides(colour = guide_legend(order = 1, override.aes = list(size=2.5))) 
-ggsave("figures/supplementary/figS6", device = "tiff", width = 6, height = 4, units = "in", dpi = 300)
-
-############################################################
-
-## Fig. S7
-
-############################################################
 # Load models
-files <- list.files("models/bym2/mods_w_nino/models_nonlinear", pattern = "w_interaction", full.names = TRUE)
+files <- list.files("models/bym2/mods_w_nino/models_nonlinear", pattern = "w_interaction_p", full.names = TRUE)
 
 data <- read.csv("data/inla_input/data.csv")
 
@@ -565,7 +519,8 @@ ggpubr::ggarrange(
     theme(legend.position = "none",
           plot.margin=unit(c(0.5, 0.5, 0.5, 0.5),"cm"),
           strip.text = element_text(face = "italic", colour = "grey20", size = 11),
-          strip.background = element_blank()) +
+          strip.background = element_blank(),
+          panel.grid = element_blank()) +
     scale_x_continuous(breaks = seq(20, 30, 2),
                        labels = seq(20, 30, 2),
                        expand = c(0,0)),
@@ -583,7 +538,8 @@ ggpubr::ggarrange(
     theme(legend.position = "none",
           plot.margin=unit(c(0.5, 0.5, 0.5, 0.5),"cm"),
           strip.text = element_text(face = "italic", colour = "grey20", size = 11),
-          strip.background = element_blank()) +
+          strip.background = element_blank(),
+          panel.grid = element_blank()) +
     scale_x_continuous(breaks = seq(0, 18, 2),
                        labels = seq(0, 18, 2),
                        expand = c(0,0)),
@@ -591,11 +547,11 @@ ggpubr::ggarrange(
   ncol = 1, nrow = 2,
   font.label = list(size = 16))
 
-ggsave(filename = "figures/supplementary/figS7", width = 5, height = 5, units = "in", dpi = 300, device = "tiff")
+ggsave(filename = "figures/supplementary/figS6", width = 5, height = 5, units = "in", dpi = 300, device = "tiff")
 
 ############################################################
 
-## Fig. S8
+## Fig. S7
 
 ############################################################
 # Load models
@@ -651,11 +607,11 @@ lagged_models %>%
         strip.background = element_blank(),
         axis.text.y = element_blank()) 
 
-ggsave(filename = "figures/supplementary/figS8", width = 8, height = 5, units = "in", dpi = 300, device = "tiff")
+ggsave(filename = "figures/supplementary/figS7", width = 8, height = 5, units = "in", dpi = 300, device = "tiff")
 
 ############################################################
 
-## Fig. S9
+## Fig. S8
 
 ############################################################
 
@@ -754,11 +710,11 @@ ggarrange(friction_map,
           labels = c("A", "B"),
           font.label = list(size = 20))
 
-ggsave("figures/supplementary/figS9", device = "tiff", width = 8, height = 10, units = "in", dpi = 300)
+ggsave("figures/supplementary/figS8", device = "tiff", width = 8, height = 10, units = "in", dpi = 300)
 
 ############################################################
 
-## Fig. S10
+## Fig. S9
 
 ############################################################
 
@@ -858,7 +814,7 @@ p <- ggarrange(mining_plot,
                font.label = list(size = 26),
                nrow = 2, ncol = 1)
 
-ggsave(filename = "figures/supplementary/figS10", p, width = 8, height = 10, units = "in", dpi = 300, device = "tiff")
+ggsave(filename = "figures/supplementary/figS9", p, width = 8, height = 10, units = "in", dpi = 300, device = "tiff")
 
 ############################################################
 
