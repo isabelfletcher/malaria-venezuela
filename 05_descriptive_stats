@@ -1,0 +1,550 @@
+# Load libraries
+pacman::p_load("dplyr", "reshape2", "forcats", "INLA", "Metrics")
+
+############################################################
+# Total population in 2016
+data <- read.csv("data/inla_input/data.csv")
+
+data %>% subset(Year == 2016 & Month == 1) %>%
+  dplyr::summarise(total_pop = sum(Population))
+
+############################################################
+# Min/max mines
+data <- read.csv("data/inla_input/data.csv")
+
+min(data$total_mines)
+max(data$total_mines)
+
+############################################################
+# Total cases 1996-2016
+data %>% 
+  dplyr::summarise(PV = sum(PV, na.rm = TRUE),
+                   PF = sum(PF, na.rm = TRUE)) 
+
+############################################################
+# Case increase between 1990-2016
+data %>% subset(Year == 2016 | Year == 1996) %>% 
+  dplyr::group_by(Year) %>%
+  dplyr::summarise(PV = sum(PV, na.rm = TRUE),
+                   PF = sum(PF, na.rm = TRUE)) %>%
+  melt(id.vars = c("Year")) %>%
+  dcast(variable~Year) %>% 
+  mutate(increase = (`2016`-`1996`)/`1996` *100)
+
+############################################################
+# Percentage of cases in Sifontes
+data %>% 
+  dplyr::group_by(Municipio) %>%
+  dplyr::summarise(PV = sum(PV, na.rm = TRUE),
+                   PF = sum(PF, na.rm = TRUE)) %>%
+  mutate(total_pv = sum(data$PV),
+         total_pf = sum(data$PF)) %>%
+  mutate(pv_percent = (PV/total_pv)*100,
+         pf_percent = (PF/total_pf)*100) %>%
+  dplyr::arrange(-pv_percent) %>% head()
+
+############################################################
+# Highest API per parish
+# PV
+data %>% subset(Year == 2016) %>%
+  dplyr::group_by(Municipio, Parroquia) %>%
+  # Sum over months
+  dplyr::summarise(PF = sum(PF, na.rm = TRUE),
+                   PV = sum(PV, na.rm = TRUE),
+                   # Population data are repeated for months
+                   Population = mean(Population, na.rm = TRUE)) %>%
+  # Calculate API
+  mutate(API_pf = PF * 1000/Population,
+         API_pv = PV * 1000/Population) %>%
+  dplyr::arrange(-API_pv) %>% head()
+
+# PF
+data %>% subset(Year == 2016) %>%
+  dplyr::group_by(Municipio, Parroquia) %>%
+  # Sum over months
+  dplyr::summarise(PF = sum(PF, na.rm = TRUE),
+                   PV = sum(PV, na.rm = TRUE),
+                   # Population data are repeated for months
+                   Population = mean(Population, na.rm = TRUE)) %>%
+  # Calculate API
+  mutate(API_pf = PF * 1000/Population,
+         API_pv = PV * 1000/Population) %>%
+  dplyr::arrange(-API_pf) %>% head()
+
+############################################################
+# Compare forest loss across parishes
+
+data %>% subset(Year == 2016 & Month == 1) %>%
+  dplyr::select(deforestation_lag0, Parroquia, Municipio) %>%
+  subset(Parroquia == "Barceloneta" | Parroquia == "Gran Sabana") 
+
+data %>% subset(Year == 2016) %>%
+  dplyr::group_by(Municipio, Parroquia) %>%
+  # Sum over months
+  dplyr::summarise(PF = sum(PF, na.rm = TRUE),
+                   PV = sum(PV, na.rm = TRUE),
+                   # Population data are repeated for months
+                   Population = mean(Population, na.rm = TRUE)) %>%
+  # Calculate API
+  mutate(API_pf = PF * 1000/Population,
+         API_pv = PV * 1000/Population) %>%
+  subset(Parroquia == "Barceloneta" | Parroquia == "Gran Sabana")
+
+############################################################
+# Environmental drivers of malaria
+load("models/models_nonlinear/mod_pf.RData") 
+mod_pf <- mod
+load("models/models_nonlinear/mod_pv.RData")
+mod_pv <- mod
+
+# P. falciparum
+mod_pf$summary.fixed %>% dplyr::slice(2:5) %>%
+  dplyr::select(mean, `0.025quant`, `0.975quant`) %>%
+  mutate(effect = round(exp(mean),1),
+         uci    = round(exp(`0.975quant`),1),
+         lci    = round(exp(`0.025quant`),1))
+
+# P. vivax
+mod_pv$summary.fixed %>% dplyr::slice(2:5) %>%
+  dplyr::select(mean, `0.025quant`, `0.975quant`) %>%
+  mutate(effect = round(exp(mean),1),
+         uci    = round(exp(`0.975quant`),1),
+         lci    = round(exp(`0.025quant`),1))
+
+############################################################
+# Number of mines in Bolívar
+bolivar_mines <- data %>% subset(Year == 2016 & Month == 1) %>% dplyr::select(total_mines, Parroquia, Municipio) %>% dplyr::summarise(mines = sum(total_mines))
+
+# Total mines in Venezuela
+venezuela_mines <- read.csv("data/mining/data.csv") %>% subset(ESTADO != "Z. Reclamación") %>%
+  dplyr::summarise(n = sum(total_mines))
+
+bolivar_mines
+bolivar_mines/venezuela_mines*100
+
+############################################################
+# Number of parishes in Bolívar where spatial random effects declined when mining activity was included into the models
+bolivar <- sf::st_read("data/ven_shp/Parroquias_Venezuela.shp") %>% subset(ESTADO == "Bolívar")
+files <- list.files("models/models_nonlinear", full.names = TRUE, pattern = "mod_w_mining")
+
+df_w_mining <- NULL
+for (i in files){
+  
+  load(i)
+  
+  if(grepl("pf", i)==TRUE){
+    parasite <- "P. falciparum" 
+  } else {
+    parasite <- "P. vivax"
+  }
+  
+  # Combine into df
+  df_w_mining <- rbind(df_w_mining, 
+                       mod$summary.random$s1[1:46,] %>%
+                         mutate(Parasite = parasite,
+                                Parroquia = bolivar$PARROQUIA,
+                                Municipio = bolivar$MUNICIPIO) %>%
+                         dplyr::rename(w_mining = mean) %>%
+                         dplyr::select(Parroquia, Municipio, w_mining, Parasite))
+}
+
+files <- list.files("models/models_nonlinear", full.names = TRUE, pattern = "mod_p")
+
+df_mining <- NULL
+for (i in files){
+  
+  load(i)
+  
+  if(grepl("pf", i)==TRUE){
+    parasite <- "P. falciparum" 
+  } else {
+    parasite <- "P. vivax"
+  }
+  
+  # Combine into df
+  df_mining <- rbind(df_mining, 
+                     mod$summary.random$s1[1:46,] %>%
+                       mutate(Parasite = parasite,
+                              Parroquia = bolivar$PARROQUIA,
+                              Municipio = bolivar$MUNICIPIO) %>%
+                       dplyr::rename(mining = mean) %>%
+                       dplyr::select(Parroquia, Municipio, mining, Parasite))
+}
+
+mining_df <- merge(df_mining, df_w_mining, by = c("Parroquia", "Municipio", "Parasite"))
+mining_df$Parroquia <- as.character(mining_df$Parroquia)
+mining_df$Parroquia[mining_df$Municipio == "Sifontes" & mining_df$Parroquia == "Dalla Costa"] <- "Dalla Costa*"
+mining_df$Parroquia[mining_df$Municipio == "Caroní" & mining_df$Parroquia == "Dalla Costa"] <- "Dalla Costa†"
+
+# Parishes where marginal effect declined in PF models
+n_pf <- mining_df %>% subset(Parasite == "P. falciparum") %>%
+  mutate(difference = abs(w_mining) - abs(mining)) %>% 
+  dplyr::arrange(-difference) %>% subset(difference > 0) %>% nrow()
+
+round(n_pf/46*100)
+
+# Parishes where marginal effect declined in PV models
+n_pv <- mining_df %>% subset(Parasite == "P. vivax") %>%
+  mutate(difference = abs(w_mining) - abs(mining)) %>% 
+  dplyr::arrange(-difference) %>% subset(difference > 0) %>% nrow()
+
+round(n_pv/46*100)
+
+############################################################
+# Reduction in spatial variation with mining
+files <- list.files("models/models_nonlinear", full.names = TRUE, pattern = "mod_w_mining")
+
+df_w_mining <- NULL
+for (i in files){
+  
+  load(i)
+  
+  if(grepl("pf", i)==TRUE){
+    parasite <- "P. falciparum" 
+  } else {
+    parasite <- "P. vivax"
+  }
+  
+  # Combine into df
+  df_w_mining <- rbind(df_w_mining, 
+                       mod$summary.random$s1[1:46,] %>%
+                         mutate(Parasite = parasite,
+                                Parroquia = bolivar$PARROQUIA,
+                                Municipio = bolivar$MUNICIPIO) %>%
+                         dplyr::rename(w_mining = mean) %>%
+                         dplyr::select(Parroquia, Municipio, w_mining, Parasite))
+}
+
+files <- list.files("models/models_nonlinear", full.names = TRUE, pattern = "mod_p")
+
+df_mining <- NULL
+for (i in files){
+  
+  load(i)
+  
+  if(grepl("pf", i)==TRUE){
+    parasite <- "P. falciparum" 
+  } else {
+    parasite <- "P. vivax"
+  }
+  
+  # Combine into df
+  df_mining <- rbind(df_mining, 
+                     mod$summary.random$s1[1:46,] %>%
+                       mutate(Parasite = parasite,
+                              Parroquia = bolivar$PARROQUIA,
+                              Municipio = bolivar$MUNICIPIO) %>%
+                       dplyr::rename(mining = mean) %>%
+                       dplyr::select(Parroquia, Municipio, mining, Parasite))
+}
+
+mining_df <- merge(df_mining, df_w_mining, by = c("Parroquia", "Municipio", "Parasite"))
+mining_df$Parroquia <- as.character(mining_df$Parroquia)
+mining_df$Parroquia[mining_df$Municipio == "Sifontes" & mining_df$Parroquia == "Dalla Costa"] <- "Dalla Costa*"
+mining_df$Parroquia[mining_df$Municipio == "Caroní" & mining_df$Parroquia == "Dalla Costa"] <- "Dalla Costa†"
+
+# calculate squared marginal effects in each model and difference
+mining_df %>% mutate(mining = mining^2,
+                     w_mining = w_mining^2) %>%
+  dplyr::group_by(Parasite) %>%
+  dplyr::summarise(mining = sum(mining),
+                   w_mining = sum(w_mining)) %>%
+  # difference
+  mutate(difference = abs(w_mining)-abs(mining)) %>% 
+  # calculate percentage change
+  mutate(change = round((difference/w_mining)*100))
+
+############################################################
+#### Total API in mining vs. non mining areas 
+data <- read.csv("data/inla_input/data.csv") %>% dplyr::select(Year, Month, Municipio, Parroquia, PV, PF, Population, total_mines)
+
+data$mining_cat[data$total_mines <= 2] <- "low mining"
+data$mining_cat[data$total_mines > 2] <- "high mining"
+
+data %>% dplyr::group_by(Year, Parroquia, Municipio, mining_cat) %>%
+  # Population data are repeated monthly
+  dplyr::summarise(Population = mean(Population, na.rm = TRUE),
+                   PF = sum(PF),
+                   PV = sum(PV)) %>% 
+  dplyr::group_by(Year, mining_cat) %>%
+  dplyr::summarise(PV = sum(PV, na.rm = TRUE),
+                   PF = sum(PF, na.rm = TRUE),
+                   Population = sum(Population, na.rm = TRUE)) %>%
+  mutate(API_pf = PF * 1000/Population,
+         API_pv = PV * 1000/Population) %>%
+  dplyr::select(Year, mining_cat, API_pf, API_pv) %>%
+  subset(Year == 2016) %>%
+  mutate(API_pf = round(API_pf,1),
+         API_pv = round(API_pv,1))
+
+############################################################
+# Differing impact of temperature in high vs. low mining areas
+data <- read.csv("data/inla_input/data.csv")
+
+# P. falciparum
+load("models/models_nonlinear/mod_pf.RData")
+
+# Calculate effect from marginals
+# Get CIs
+CI <- 0.95
+CIs <- list()
+for(i in seq_len(length(mod$marginals.random$`inla.group(temp)`))){
+  CIs[[i]] <- data.frame(lci = INLA::inla.qmarginal((1 - CI) / 2, mod$marginals.random$`inla.group(temp)`[[i]]), 
+                         uci =  INLA::inla.qmarginal(1 - (1 - CI) / 2, mod$marginals.random$`inla.group(temp)`[[i]]),
+                         ID  = mod$summary.random$`inla.group(temp)`$ID[i])
+  
+}
+
+CIs <- 
+  do.call(rbind, CIs) %>% 
+  # Transform values to get effect
+  mutate(lci = exp(lci),
+         uci = exp(uci)) %>%
+  # Rescale temp values
+  mutate(ID = ID*sd(data$temp_avg) + mean(data$temp_avg),
+         mining = c(rep("low", 25), rep("high", 25))) 
+
+# max effect 
+max <- mod$summary.random$`inla.group(temp)` %>%
+  dplyr::select(ID, mean, `0.025quant`, `0.975quant`) %>%
+  mutate(max_effect = unname(unlist(lapply(mod$marginals.random$`inla.group(temp)`,
+                                           function(x)inla.emarginal(exp,x))))) %>%
+  mutate(mining = c(rep("low", 25), rep("high", 25)),
+         # transform scaled values
+         ID            = ID*sd(data$temp_avg) + mean(data$temp_avg)) %>%
+  # Find temperature of min/max effect
+  dplyr::group_by(mining) %>%
+  dplyr::filter(max_effect == max(max_effect)) %>% 
+  subset(mining == "high") %>% as.data.frame()
+
+max <- merge(max, 
+             CIs %>%
+               # subset to max effect
+               subset(ID == max$ID[1] | ID == max$ID[2]),
+             by = c("ID", "mining"))
+
+# max effect in high mining areas
+max %>% mutate(ID = round(ID, 1),
+               max_effect = round(max_effect,1),
+               lci = round(lci,2),
+               uci = round(uci,2))
+
+# get effect in low mining areas at same temperature (26.5)
+merge(mod$summary.random$`inla.group(temp)` %>%
+  dplyr::select(ID, mean, `0.025quant`, `0.975quant`) %>%
+  mutate(max_effect = unname(unlist(lapply(mod$marginals.random$`inla.group(temp)`,
+                                           function(x)inla.emarginal(exp,x))))) %>%
+  mutate(mining = c(rep("low", 25), rep("high", 25)),
+         # transform scaled values
+         ID            = ID*sd(data$temp_avg) + mean(data$temp_avg)) %>%
+  subset(mining == "low") %>% filter(ID > 26.06 & ID < 26.8),
+  CIs %>% 
+    subset(mining == "low") %>%
+    # subset
+    filter(ID > 26.06 & ID < 26.8),
+  by = c("ID", "mining")) %>%
+  mutate(max_effect = round(max_effect,1),
+         lci = round(lci,2),
+         uci = round(uci,2))
+
+# P. vivax
+load("models/models_nonlinear/mod_pv.RData")
+
+# Calculate effect from marginals
+# Get CIs
+CI <- 0.95
+CIs <- list()
+for(i in seq_len(length(mod$marginals.random$`inla.group(temp)`))){
+  CIs[[i]] <- data.frame(lci = INLA::inla.qmarginal((1 - CI) / 2, mod$marginals.random$`inla.group(temp)`[[i]]), 
+                         uci =  INLA::inla.qmarginal(1 - (1 - CI) / 2, mod$marginals.random$`inla.group(temp)`[[i]]),
+                         ID  = mod$summary.random$`inla.group(temp)`$ID[i])
+  
+}
+
+CIs <- 
+  do.call(rbind, CIs) %>% 
+  # Transform values to get effect
+  mutate(lci = exp(lci),
+         uci = exp(uci)) %>%
+  # Rescale temp values
+  mutate(ID = ID*sd(data$temp_avg) + mean(data$temp_avg),
+         mining = c(rep("low", 25), rep("high", 25))) 
+
+# max effect 
+max <- mod$summary.random$`inla.group(temp)` %>%
+  dplyr::select(ID, mean, `0.025quant`, `0.975quant`) %>%
+  mutate(max_effect = unname(unlist(lapply(mod$marginals.random$`inla.group(temp)`,
+                                           function(x)inla.emarginal(exp,x))))) %>%
+  mutate(mining = c(rep("low", 25), rep("high", 25)),
+         # transform scaled values
+         ID            = ID*sd(data$temp_avg) + mean(data$temp_avg)) %>%
+  # Find temperature of min/max effect
+  dplyr::group_by(mining) %>%
+  dplyr::filter(max_effect == max(max_effect)) %>% as.data.frame() %>%
+  subset(mining == "high") %>% as.data.frame()
+  
+
+max <- merge(max, 
+             CIs %>%
+               # subset to max effect
+               subset(ID == max$ID[1] | ID == max$ID[2]),
+             by = c("ID", "mining"))
+
+# max effect in high mining areas
+max %>% mutate(ID = round(ID, 1),
+               max_effect = round(max_effect,1),
+               lci = round(lci,2),
+               uci = round(uci,2))
+
+# get effect in low mining areas at same temperature (28.1)
+merge(mod$summary.random$`inla.group(temp)` %>%
+        dplyr::select(ID, mean, `0.025quant`, `0.975quant`) %>%
+        mutate(max_effect = unname(unlist(lapply(mod$marginals.random$`inla.group(temp)`,
+                                                 function(x)inla.emarginal(exp,x))))) %>%
+        mutate(mining = c(rep("low", 25), rep("high", 25)),
+               # transform scaled values
+               ID            = ID*sd(data$temp_avg) + mean(data$temp_avg)) %>%
+        subset(mining == "low") %>% filter(ID > 27.8 & ID < 28.2),
+      CIs %>% 
+        subset(mining == "low") %>%
+        # subset
+        filter(ID > 27.8 & ID < 28.2),
+      by = c("ID", "mining")) %>%
+  mutate(max_effect = round(max_effect,1),
+         lci = round(lci,2),
+         uci = round(uci,2))
+
+############################################################
+# Differing impact of rainfall in high vs. low mining areas
+
+# P. falciparum
+load("models/models_nonlinear/mod_pf.RData")
+
+# Calculate effect from marginals
+# Get CIs
+CI <- 0.95
+CIs <- list()
+for(i in seq_len(length(mod$marginals.random$`inla.group(prcp)`))){
+  CIs[[i]] <- data.frame(lci = INLA::inla.qmarginal((1 - CI) / 2, mod$marginals.random$`inla.group(prcp)`[[i]]), 
+                         uci =  INLA::inla.qmarginal(1 - (1 - CI) / 2, mod$marginals.random$`inla.group(prcp)`[[i]]),
+                         ID  = mod$summary.random$`inla.group(prcp)`$ID[i])
+  
+}
+
+CIs <- 
+  do.call(rbind, CIs) %>% 
+  # Transform values to get effect
+  mutate(lci = exp(lci),
+         uci = exp(uci)) %>%
+  # Rescale prcp values
+  mutate(ID = ID*sd(data$prcp_avg) + mean(data$prcp_avg),
+         mining = c(rep("low", 25), rep("high", 25))) 
+
+# max effect 
+max <- mod$summary.random$`inla.group(prcp)` %>%
+  dplyr::select(ID, mean, `0.025quant`, `0.975quant`) %>%
+  mutate(max_effect = unname(unlist(lapply(mod$marginals.random$`inla.group(prcp)`,
+                                           function(x)inla.emarginal(exp,x))))) %>%
+  mutate(mining = c(rep("low", 25), rep("high", 25)),
+         # transform scaled values
+         ID            = ID*sd(data$prcp_avg) + mean(data$prcp_avg)) %>%
+  # Find conditions min/max effect
+  dplyr::group_by(mining) %>%
+  dplyr::filter(max_effect == max(max_effect)) %>% 
+  subset(mining == "low") %>% as.data.frame()
+
+max <- merge(max, 
+             CIs %>%
+               # subset to max effect
+               subset(ID == max$ID[1] | ID == max$ID[2]),
+             by = c("ID", "mining"))
+
+# max effect in low mining areas
+max %>% mutate(ID = round(ID, 2),
+               max_effect = round(max_effect,1),
+               lci = round(lci,2),
+               uci = round(uci,2))
+
+# get effect in high mining areas in same conditions (2.5mm/day) - although this is not significant
+merge(mod$summary.random$`inla.group(prcp)` %>%
+        dplyr::select(ID, mean, `0.025quant`, `0.975quant`) %>%
+        mutate(max_effect = unname(unlist(lapply(mod$marginals.random$`inla.group(prcp)`,
+                                                 function(x)inla.emarginal(exp,x))))) %>%
+        mutate(mining = c(rep("low", 25), rep("high", 25)),
+               # transform scaled values
+               ID            = ID*sd(data$prcp_avg) + mean(data$prcp_avg)) %>%
+        subset(mining == "high") %>% filter(ID > 2.0 & ID < 2.6),
+      CIs %>% 
+        subset(mining == "high") %>%
+        # subset
+        filter(ID > 2.0 & ID < 2.6),
+      by = c("ID", "mining")) %>%
+  mutate(max_effect = round(max_effect,1),
+         lci = round(lci,2),
+         uci = round(uci,2))
+
+# P. vivax
+load("models/models_nonlinear/mod_pv.RData")
+
+# Calculate effect from marginals
+# Get CIs
+CI <- 0.95
+CIs <- list()
+for(i in seq_len(length(mod$marginals.random$`inla.group(prcp)`))){
+  CIs[[i]] <- data.frame(lci = INLA::inla.qmarginal((1 - CI) / 2, mod$marginals.random$`inla.group(prcp)`[[i]]), 
+                         uci =  INLA::inla.qmarginal(1 - (1 - CI) / 2, mod$marginals.random$`inla.group(prcp)`[[i]]),
+                         ID  = mod$summary.random$`inla.group(prcp)`$ID[i])
+  
+}
+
+CIs <- 
+  do.call(rbind, CIs) %>% 
+  # Transform values to get effect
+  mutate(lci = exp(lci),
+         uci = exp(uci)) %>%
+  # Rescale prcp values
+  mutate(ID = ID*sd(data$prcp_avg) + mean(data$prcp_avg),
+         mining = c(rep("low", 25), rep("high", 25))) 
+
+# max effect 
+max <- mod$summary.random$`inla.group(prcp)` %>%
+  dplyr::select(ID, mean, `0.025quant`, `0.975quant`) %>%
+  mutate(max_effect = unname(unlist(lapply(mod$marginals.random$`inla.group(prcp)`,
+                                           function(x)inla.emarginal(exp,x))))) %>%
+  mutate(mining = c(rep("low", 25), rep("high", 25)),
+         # transform scaled values
+         ID            = ID*sd(data$prcp_avg) + mean(data$prcp_avg)) %>%
+  # Find conditions min/max effect
+  dplyr::group_by(mining) %>%
+  dplyr::filter(max_effect == max(max_effect)) %>% 
+  subset(mining == "low") %>% as.data.frame()
+
+max <- merge(max, 
+             CIs %>%
+               # subset to max effect
+               subset(ID == max$ID[1] | ID == max$ID[2]),
+             by = c("ID", "mining"))
+
+# max effect in low mining areas
+max %>% mutate(ID = round(ID, 2),
+               max_effect = round(max_effect,1),
+               lci = round(lci,2),
+               uci = round(uci,2))
+
+# get effect in high mining areas in same conditions (1.8mm/day) - although this is not significant
+merge(mod$summary.random$`inla.group(prcp)` %>%
+        dplyr::select(ID, mean, `0.025quant`, `0.975quant`) %>%
+        mutate(max_effect = unname(unlist(lapply(mod$marginals.random$`inla.group(prcp)`,
+                                                 function(x)inla.emarginal(exp,x))))) %>%
+        mutate(mining = c(rep("low", 25), rep("high", 25)),
+               # transform scaled values
+               ID            = ID*sd(data$prcp_avg) + mean(data$prcp_avg)) %>%
+        subset(mining == "high") %>% filter(ID > 1.8 & ID < 2),
+      CIs %>% 
+        subset(mining == "high") %>%
+        # subset
+        filter(ID > 1.8 & ID < 2),
+      by = c("ID", "mining")) %>%
+  mutate(max_effect = round(max_effect,1),
+         lci = round(lci,2),
+         uci = round(uci,2))
