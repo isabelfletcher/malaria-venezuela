@@ -578,7 +578,7 @@ mining_timeseries <-
                     labels = c("A"), font.label = list(size = 16))
 
 #######################################################################
-# Interactions between climate and deforestation
+# Interactions between climate and mining
 files <- list.files("models/models_nonlinear", full.names = TRUE, pattern = "mod_p")
 data <- read.csv("data/inla_input/data.csv")
 
