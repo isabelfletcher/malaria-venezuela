@@ -2,7 +2,7 @@
 
 This repository contains R scripts used to produce analysis of the impact of environmental gradation, specifically mining, and climate  variation on malaria in southern Venezuela.
 
-Results are being prepared for publication and review.
+The manuscript associated with this analysis "Synergies between environmental degradation and climate variation on malaria re-emergence in southern Venezuela: a spatiotemporal modelling study" is currently in review.
 
 The analysis workflow is as follows:
 1. Detection of best monthly time lags for including El Nino into spatiotemporal models of malaria incidence
