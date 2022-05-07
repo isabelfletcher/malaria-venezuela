@@ -37,9 +37,6 @@ mines           <- scale(data$total_mines)[,1]
 forest_decrease <- scale(data$deforestation_lag0)[,1]
 urbanization    <- scale(data$urban_increase_cum)[,1]
 
-# Socioeconomic data
-health_travel <- scale(data$health_travel_time)[,1]
-
 # Spatial random effects
 s1 <- rep(1:46, 252)
 Parroquia <- data$Parroquia
@@ -80,8 +77,7 @@ for (j in parasites){
                         temp, prcp, nino,
                         mines, forest_decrease,
                         mining_cat,
-                        urbanization,
-                        health_travel)
+                        urbanization)
   
   formula <- y ~ 1 + f(s1, model = "bym2", graph = "map.graph") +
     f(t1, model = "rw1") +
@@ -91,8 +87,7 @@ for (j in parasites){
     nino +
     forest_decrease + 
     mines +
-    urbanization +
-    health_travel
+    urbanization 
   
   # Run model
   mod <- inla(formula, data = df_inla, family = "zeroinflatednbinomial0",
@@ -105,7 +100,7 @@ for (j in parasites){
               control.family = list(link = "log"))
   
   # Save model
-  save(mod, file = paste0("models/bym2/mods_w_nino/models_nonlinear/mod", mod_filename, ".RData"))
+  save(mod, file = paste0("models/models_nonlinear/mod", mod_filename, ".RData"))
   
   # Model without mining
   formula <- y ~ 1 + f(s1, model = "bym2", graph = "map.graph") +
@@ -116,8 +111,7 @@ for (j in parasites){
     nino +
     forest_decrease + 
     #mines +
-    urbanization +
-    health_travel
+    urbanization
   
   # Run model
   mod <- inla(formula, data = df_inla, family = "zeroinflatednbinomial0",
@@ -130,7 +124,7 @@ for (j in parasites){
               control.family = list(link = "log"))
   
   # Save model
-  save(mod, file = paste0("models/bym2/mods_w_nino/models_nonlinear/mod_w_mining", mod_filename, ".RData"))
+  save(mod, file = paste0("models/models_nonlinear/mod_w_mining", mod_filename, ".RData"))
   
   # Model without interaction
   formula <- y ~ 1 + f(s1, model = "bym2", graph = "map.graph") +
@@ -141,8 +135,7 @@ for (j in parasites){
     nino +
     forest_decrease + 
     mines +
-    urbanization +
-    health_travel
+    urbanization 
   
   # Run model
   mod <- inla(formula, data = df_inla, family = "zeroinflatednbinomial0",
@@ -155,7 +148,7 @@ for (j in parasites){
               control.family = list(link = "log"))
   
   # Save model
-  save(mod, file = paste0("models/bym2/mods_w_nino/models_nonlinear/mod_w_interaction", mod_filename, ".RData"))
+  save(mod, file = paste0("models/models_nonlinear/mod_w_interaction", mod_filename, ".RData"))
   
   # Model without interaction or mining
   formula <- y ~ 1 + f(s1, model = "bym2", graph = "map.graph") +
@@ -166,8 +159,7 @@ for (j in parasites){
     nino +
     forest_decrease + 
     # mines +
-    urbanization +
-    health_travel
+    urbanization 
   
   # Run model
   mod <- inla(formula, data = df_inla, family = "zeroinflatednbinomial0",
@@ -180,7 +172,7 @@ for (j in parasites){
               control.family = list(link = "log"))
   
   # Save model
-  save(mod, file = paste0("models/bym2/mods_w_nino/models_nonlinear/mod_w_interaction_w_mining", mod_filename, ".RData"))
+  save(mod, file = paste0("models/models_nonlinear/mod_w_interaction_w_mining", mod_filename, ".RData"))
   
   
 }
@@ -207,8 +199,7 @@ for (j in parasites){
                         temp, prcp, nino,
                         mines, 
                         forest_decrease,
-                        urbanization,
-                        health_travel)
+                        urbanization)
   
   formula <- y ~ 1 + f(s1, model = "bym2", graph = "map.graph") +
     f(t1, model = "rw1") +
@@ -218,8 +209,7 @@ for (j in parasites){
     nino +
     mines +
     forest_decrease + 
-    urbanization +
-    health_travel
+    urbanization
   
   # Run model
   mod <- inla(formula, data = df_inla, family = "zeroinflatednbinomial0",
@@ -232,6 +222,6 @@ for (j in parasites){
               control.family = list(link = "log"))
   
   # Save model
-  save(mod, file = paste0("models/bym2/mods_w_nino/models_linear/mod", mod_filename, ".RData"))
+  save(mod, file = paste0("models/models_linear/mod", mod_filename, ".RData"))
   
 }
