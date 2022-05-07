@@ -9,6 +9,7 @@ The analysis workflow is as follows:
 2. Spatiotemporal modelling of malaria incidence in Bolívar state, southern Venezuela. This also included random effect analysis and testing for the interactions between environmental degradation and climate variation.
 3. Visualisation of results
 4. Preparation of supplementary material to support findings
+5. Descriptive statistics included in the main text
 
 Scripts used to extract measures of forest decrease and urbanization from land cover maps, for analysis are also included. 
 
