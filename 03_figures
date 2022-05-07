@@ -31,24 +31,27 @@ world_points$Y[world_points$name == "Guyana"] <- 6
 
 location_map <- 
   ggplot(data = world) +
-  geom_sf(fill= "antiquewhite") +
-  geom_sf(data = st_as_sf(bolivar), fill = "rosybrown") +
+  geom_sf(fill= "antiquewhite", size = 0.2) +
+  geom_sf(data = st_as_sf(bolivar), fill = "rosybrown", size = 0.2) +
   theme_bw() +
   # Plot country labels
   geom_text(data= world_points,aes(x = X, y = Y, label = name),
             color = "darkblue", fontface = "bold", 
-            check_overlap = FALSE, size = 2) +
-  annotate("text", x = -63, y = 6, label = "Bolívar\nstate", color = "darkblue", size = 2) +
-  theme(panel.grid.major = element_line(color = gray(0.3), linetype = "dashed", size = 0.3), 
+            check_overlap = FALSE, size = 1.2) +
+  annotate("text", x = -63, y = 6, label = "Bolívar\nstate", color = "darkblue", size = 1.2) +
+  theme(panel.grid.major = element_line(color = gray(0.3), linetype = "dashed", size = 0.1), 
         panel.background = element_rect(fill = "aliceblue"),
-        axis.text = element_text(size = 8), 
-        axis.title = element_text(size = 9), 
+        axis.text = element_text(size = 5), 
+        axis.title = element_text(size = 6), 
         plot.margin = unit(c(0.02, 0.02, 0, 0.02),"cm")) +
   # Scale bar and arrow
   annotation_scale(location = "bl", width_hint = 0.25,
-                   height = unit(0.15, "cm")) +
+                   height = unit(0.1, "cm"), text_cex = 0.35,
+                   pad_x = unit(0.1, "cm"), pad_y = unit(0.15, "cm")) +
   annotation_north_arrow(location = "bl", which_north = "true", 
-                         pad_x = unit(1.66, "in"), pad_y = unit(1, "in"),
+                         height = unit(0.6, "cm"),
+                         width = unit(0.5, "cm"),
+                         pad_x = unit(0.93, "in"), pad_y = unit(0.57, "in"),
                          style = north_arrow_fancy_orienteering) +
   coord_sf(xlim = c(-75, -55), ylim = c(-1, 14)) +
   xlab("Longitude") + ylab("Latitude")
@@ -70,7 +73,7 @@ plot_timeseries_municipality <- function(municipio, legend_position){
   # Polygon map
   map <- 
     ggplot(data = bolivar_0) +
-    geom_sf(colour = "grey30", fill = "white", size = 0.2) +
+    geom_sf(colour = "grey30", fill = "white", size = 0.1) +
     #geom_sf(data = polygon_sf, colour = "#571B57", fill = "#571B57") +
     geom_sf(data = polygon_sf, colour = "grey50", fill = "grey50") +
     theme_void()
@@ -86,24 +89,25 @@ plot_timeseries_municipality <- function(municipio, legend_position){
                   api_pv = PV * 1000/Population) %>%
     replace_na(list(api_pf = 0, api_pv = 0)) %>%
     ggplot(aes(Date)) + 
-    geom_line(aes(y = api_pf, colour = "api_pf"), size = 0.4) +
-    geom_line(aes(y = api_pv, colour = "api_pv"), size = 0.4) +
+    geom_line(aes(y = api_pf, colour = "api_pf"), size = 0.2) +
+    geom_line(aes(y = api_pv, colour = "api_pv"), size = 0.2) +
     xlab("") + ylab("") + 
     facet_wrap(~Municipio,
                labeller = label_wrap_gen(18),
                scales = "free_y") +
     theme_classic() +
     scale_y_continuous(labels = comma) + 
-    theme(axis.text.x = element_text(angle = 90),
-          strip.text = element_text(colour = "black", size = 10),
+    theme(axis.text.x = element_text(angle = 90, size = 4),
+          strip.text = element_text(colour = "black", size = 6),
           strip.background = element_blank(),
           legend.position = legend_position,
           legend.title = element_blank(),
-          legend.text = element_text(size = 12),
-          axis.text = element_text(size = 8),
+          legend.text = element_text(size = 6),
+          legend.spacing.y = unit(0, 'cm'),
+          axis.text.y = element_text(size = 4),
           axis.line = element_line(size = 0.2), 
           axis.ticks = element_line(size = 0.1), 
-          plot.margin = unit(c(0.02, 0.02, 0.02, 0.02),"cm")) +
+          plot.margin = unit(c(0.02, 0.05, 0.02, 0.005),"cm")) +
     scale_x_date(labels = date_format("%Y"),
                  expand = c(0,0),
                  breaks = date_breaks("2 years")) +
@@ -111,12 +115,12 @@ plot_timeseries_municipality <- function(municipio, legend_position){
                         labels = c(expression("API"[italic("pf")]), 
                                    expression("API"[italic("pv")]))) +
     # Make legend line width thicker
-    guides(colour = guide_legend(order = 1, override.aes = list(size = 2)))
+    guides(colour = guide_legend(order = 1, override.aes = list(size = 1.2)))
   
   plot <- 
     ggdraw() +
     draw_plot(timeseries) +
-    draw_plot(map, 0.15, 0.65, width = 0.2, height = 0.2) 
+    draw_plot(map, 0.235, 0.64, width = 0.2, height = 0.2) 
   
   return(plot)
 }
@@ -171,12 +175,12 @@ api_map <-
   facet_wrap(~Parasite, ncol = 2) + 
   scale_fill_gradient2(name = "log API ",
                        guide = guide_colourbar(ticks = FALSE,
-                                               barheight = 1,
-                                               barwidth = 6,
+                                               barheight = 0.5,
+                                               barwidth = 3,
                                                direction = "horizontal", 
                                                title.position = "top",
                                                frame.colour = "black",
-                                               frame.linewidth = 1),
+                                               frame.linewidth = 0.6),
                        high = "#91103B",
                        mid  = "#E9C4D1",
                        low  = "white", 
@@ -189,41 +193,43 @@ api_map <-
         axis.text = element_blank(),
         axis.ticks = element_blank(),
         legend.position = c(0.55, 0.05),
-        legend.title = element_text(hjust = 0.5),
+        legend.text = element_text(size = 5),
+        legend.title = element_text(hjust = 0.5, size = 6),
         legend.background = element_blank(),
         strip.background = element_blank(),
         strip.text = element_text(face = "italic", colour = "black", 
-                                  size = 12),
+                                  size = 6),
         plot.margin = unit(c(0, 0.0, 0, 0),"lines"))
 
 # Arrange plots
 p1 <- plot_grid(location_map, api_map,
                 align = "hv", axis = "bt",
                 labels = c("A", "B"),
-                label_size = 20,
-                rel_widths = c(0.5, 1),
+                label_size = 10,
+                rel_widths = c(0.6, 1),
                 rel_heights = c(1, 2)) +
   theme(plot.margin = unit(c(0, 0, 0.12, 0.05),"lines"))
 
 p <- plot_grid(p1, plot_grid(api_timeseries, labels = "C",
-                             label_size = 20, vjust = 0.2),
+                             label_size = 10, vjust = 0.2),
                nrow = 2,
-               rel_heights = c(1, 2)) +
+               rel_heights = c(1, 2.5)) +
   geom_text(data = data.frame(x = 0.5, y = 0.015, label = "Time"),
             mapping = aes(x = x, y = y, label = label),
-            size = 4, inherit.aes = FALSE) + 
-  geom_text(data = data.frame(x = 0.012, y = 0.35, label = "API"),
+            size = 2.5, inherit.aes = FALSE) + 
+  geom_text(data = data.frame(x = 0.017, y = 0.36, label = "API"),
             mapping = aes(x = x, y = y, label = label),
-            size = 4, angle = 90L, inherit.aes = FALSE) +
-  geom_text(data = data.frame(x = 0.518620524686926, y = 0.684701787310243, label = "Municipality"),
+            size = 2.5, angle = 90L, inherit.aes = FALSE) +
+  geom_text(data = data.frame(x = 0.518620524686926, y = 0.72, label = "Municipality"),
             mapping = aes(x = x, y = y, label = label),
-            size = 4,
+            size = 2.5,
             inherit.aes = FALSE)
 
 
 # Using ggannotate to find location of labels
 #ggannotate::ggannotate(p)
-ggsave("figures/fig1", p, device = "tiff", width = 8, height = 8, units = "in", dpi = 300)
+ggsave("figures/fig1", p, device = "tiff", width = 107, height = 120, units = "mm", dpi = 800, bg = "white")
+
 
 ############################################################
 
@@ -232,9 +238,9 @@ ggsave("figures/fig1", p, device = "tiff", width = 8, height = 8, units = "in", 
 ############################################################
 
 # Model estimates
-load("models/bym2/mods_w_nino/models_nonlinear/mod_pf.RData") 
+load("models/models_nonlinear/mod_pf.RData") 
 mod_pf <- mod
-load("models/bym2/mods_w_nino/models_nonlinear/mod_pv.RData")
+load("models/models_nonlinear/mod_pv.RData")
 mod_pv <- mod
 
 estimates <- 
@@ -254,14 +260,12 @@ estimates <-
                         uci = `0.975quant`)) %>%
   mutate(Variable = recode(Variable, 
                            "forest_decrease" = "Deforestation",
-                           "health_travel"   = "Healthcare inaccessibility",
                            "mines"           = "Mining",
                            "urbanization"    = "Urbanization",
                            "nino"            = "Niño 3.4")) %>%
   # Order
   mutate(Variable = factor(Variable, levels = c("Urbanization",
                                                 "Niño 3.4",
-                                                "Healthcare inaccessibility",
                                                 "Deforestation",
                                                 "Mining"))) %>%
   ggplot(aes(Variable, colour = Parasite)) +
@@ -273,10 +277,7 @@ estimates <-
   coord_flip() + 
   scale_y_continuous(name = "Effect size",
                      position = "right",
-                     #limits = c(-0.6, 1.8),
-                     #breaks = seq(-0.6, 1.8, 0.4),
                      breaks = seq(-0.5, 4.5, 0.5),
-                    # labels = seq(-0.6, 1.8, 0.4),
                      expand = c(0,0)) +
   theme_classic() +
   theme(plot.margin = unit(c(0.2, 1, 0, 0.1),"cm"),
@@ -326,10 +327,11 @@ extracted_points$Y <- pts@coords[,2]
 # Remove points not in polygons (NAs)
 pts_in <- extracted_points[!is.na(extracted_points),]
 
-mining_map <- data_sp %>% ggplot() + 
+mining_map <- 
+  data_sp %>% ggplot() + 
   geom_sf(aes(fill = mines), colour = "black", size = 0.05) +
   geom_point(data = pts_in, aes(x=X,y=Y, colour = ESTADO),
-             size = 0.002, alpha = 1) +
+             size = 0.002, alpha = 0.6, shape =16) +
   theme_void() +
   ylab("") + xlab("") +
   theme(legend.text = element_blank(),
@@ -341,7 +343,7 @@ mining_map <- data_sp %>% ggplot() +
         legend.key.height =unit(0,"cm"),
         legend.key.width = unit(0,"cm"),
         plot.margin = unit(c(0,0.9,0.5,0.5),"cm")) +
-  guides(colour = guide_legend(order = 1, override.aes = list(size=0.8))) +
+  guides(colour = guide_legend(order = 1, override.aes = list(size=0.8, colour = c("grey35", "transparent")))) +
   scale_fill_gradient(name = c(expression(paste("High mining") %->% paste(""))),
                       low = "#D7CFDE",
                       high = "#6d6875",
@@ -352,12 +354,15 @@ mining_map <- data_sp %>% ggplot() +
                                               frame.colour = "black",
                                               frame.linewidth = 0.2)) +
   scale_colour_manual(name = "Mining sites",
-                      values = c("grey35", "transparent")) 
+                      values = c("grey35"))
+
+
+
 # Add table of labels
 tb <- data.frame(label = c(1:10),
                  Parroquia = c("Barceloneta", "Ikabarú",
                                "San Isidro", "Gran Sabana",
-                               "Dalla Costa", "Sifontes",
+                               "Dalla Costa", "Tumeremo",
                                "Roscio", "Guaniamo",
                                "El Callao", "Pedro Cova"))
 table <- tableGrob(tb, theme = ttheme_minimal(base_size = 4,
@@ -370,7 +375,7 @@ map <- ggdraw() +
 
 
 ### Load models
-files <- list.files("models/bym2/mods_w_nino/models_nonlinear", full.names = TRUE, pattern = "mod_w_mining_p") 
+files <- list.files("models/models_nonlinear", full.names = TRUE, pattern = "mod_w_mining_p") 
 
 df_w_mining <- NULL
 for (i in files){
@@ -395,7 +400,7 @@ for (i in files){
                          dplyr::select(Parroquia, Municipio, mean, uci, lci, Parasite, Model))
 }
 
-files <- list.files("models/bym2/mods_w_nino/models_nonlinear", full.names = TRUE, pattern = "mod_p")
+files <- list.files("models/models_nonlinear", full.names = TRUE, pattern = "mod_p")
 
 df_mining <- NULL
 for (i in files){
@@ -465,7 +470,7 @@ df$Parroquia[df$Parroquia == "Ikabarú"] <- "2 Ikabarú"
 df$Parroquia[df$Parroquia == "San Isidro"] <- "3 San Isidro"
 df$Parroquia[df$Parroquia == "Gran Sabana"] <- "4 Gran Sabana"
 df$Parroquia[df$Parroquia == "Dalla Costa"] <- "5 Dalla Costa"
-df$Parroquia[df$Parroquia == "Sifontes"] <- "6 Sifontes"
+df$Parroquia[df$Parroquia == "Sifontes"] <- "6 Tumeremo"
 df$Parroquia[df$Parroquia == "Roscio"] <- "7 Roscio"
 df$Parroquia[df$Parroquia == "Guaniamo"] <- "8 Guaniamo"
 df$Parroquia[df$Parroquia == "El Callao"] <- "9 El Callao"
@@ -478,7 +483,7 @@ mining_models <-
   ggplot(df, aes(Parroquia)) + 
   geom_hline(yintercept = 0, linetype = "dashed", size = 0.1) +
   geom_linerange(aes(ymin = lci, ymax = uci, group = Model, colour = Model), size = 0.3, position = position_dodge(width = 0.5), alpha = 0.5) +
-  geom_point(aes(Parroquia, mean, group = Model, colour = Model), position = position_dodge(width = 0.5), size = 0.3, alpha = 0.5) +
+  geom_point(aes(Parroquia, mean, group = Model, colour = Model), position = position_dodge(width = 0.5), size = 0.3, alpha = 0.5, shape = 16) +
   theme_light() + 
   ylab("Marginal effect (log API)") + xlab("") +
   facet_wrap(~Parasite, scales = "fixed") +
@@ -486,21 +491,19 @@ mining_models <-
         panel.grid.major = element_blank(), 
         panel.grid.minor = element_blank(),
         strip.background = element_blank(),
-        legend.position = c(1.11,0.6),
+        legend.position = c(1.13,0.6),
         legend.text = element_text(size = 5),
-        legend.title = element_text(size = 6),
+        legend.title = element_text(size = 5),
         legend.key.height =unit(0.3,"cm"),
         legend.key.width = unit(0.3,"cm"),
         legend.background = element_blank(),
-        axis.text = element_text(size = 5),
+        axis.text = element_text(size = 4),
         axis.title = element_text(size = 6),
         plot.margin = unit(c(0.2,1.8,0.2,0.2),"cm")) +
   scale_x_discrete(labels = wrap_format(10)) +
   xlim(as.character(unique(df$Parroquia))) +
   scale_fill_manual(values = c(cols[2], cols[10])) +
   scale_colour_manual(values = c(cols[2], cols[10])) +
-  #scale_fill_manual(values = c("#6872A1", "#AFBCE8")) +
-  #scale_colour_manual(values = c("#6872A1", "#AFBCE8")) +
   coord_flip()
 
 mining_models <- 
@@ -519,8 +522,8 @@ p <- ggpubr::ggarrange(ggpubr::ggarrange(estimates, map,
 
 # Add labels
 #ggannotate::ggannotate(p)
-p + geom_label(data.frame(x = c(0.77,   0.812, 0.815, 0.642, 0.825, 0.788, 0.832, 0.804, 0.86,  0.86),
-                          y = c(0.62,   0.87,  0.81,  0.85,  0.665, 0.855, 0.86, 0.795, 0.89, 0.73),
+p + geom_label(data.frame(x = c(0.765,   0.807, 0.812, 0.642, 0.822, 0.788,  0.827, 0.8,  0.85,  0.85),
+                          y = c(0.62,   0.88,  0.819,  0.85,  0.665, 0.867, 0.868, 0.805, 0.91, 0.73),
                           label = c("1", "7",  "5",    "8",   "2",  "10",  "9",   "3",   "6",  "4")),
                mapping = aes(x = x, y = y, label = label),
                size = 1, fill = "white",
@@ -529,8 +532,7 @@ p + geom_label(data.frame(x = c(0.77,   0.812, 0.815, 0.642, 0.825, 0.788, 0.832
                label.r = unit(0.03, "lines"),
                inherit.aes = FALSE)
 
-ggsave("figures/fig2", device = "tiff", width = 12, height = 8, units = "cm", dpi = 1500) 
-
+ggsave("figures/fig2", device = "tiff", width = 107, height = 65, units = "mm", dpi = 800, bg = "white") 
 
 ############################################################
 
@@ -538,46 +540,46 @@ ggsave("figures/fig2", device = "tiff", width = 12, height = 8, units = "cm", dp
 
 ############################################################
 
-# API in 2016 in mining vs. non-mining areas
+# API in mining vs. non-mining areas
 data <- read.csv("data/inla_input/data.csv") %>% dplyr::select(Year, Month, Municipio, Parroquia, PV, PF, Population, total_mines)
 
 data$mining_cat[data$total_mines <= 2] <- "low mining"
 data$mining_cat[data$total_mines > 2] <- "high mining"
 
 cols <- RColorBrewer::brewer.pal(11, "BrBG")
+labels <- as_labeller(c(`API_pf` = "P. falciparum", `API_pv` = "P. vivax"))
 
-box_plot <-  
-  ggpubr::ggarrange(data %>% 
-                      subset(Year == 2016) %>%
-                      dplyr::group_by(Municipio, Parroquia, mining_cat) %>%
+mining_timeseries <-  
+  ggpubr::ggarrange(data %>% dplyr::group_by(Year, Parroquia, Municipio, mining_cat) %>%
+                      # Population data are repeated monthly
                       dplyr::summarise(Population = mean(Population, na.rm = TRUE),
+                                       PF = sum(PF),
+                                       PV = sum(PV)) %>% 
+                      dplyr::group_by(Year, mining_cat) %>%
+                      dplyr::summarise(PV = sum(PV, na.rm = TRUE),
                                        PF = sum(PF, na.rm = TRUE),
-                                       PV = sum(PV, na.rm = TRUE)) %>%
-                      # Calculate API
+                                       Population = sum(Population, na.rm = TRUE)) %>%
                       mutate(API_pf = PF * 1000/Population,
-                             API_pv = PV * 1000/Population) %>% 
-                      mutate(API_pf = log(API_pf),
-                             API_pv = log(API_pv)) %>%
-                      replace(is.na(.), 0) %>%
-                      dplyr::select(-PV, -PF, -Population) %>%
-                      melt(id.vars = c("mining_cat", "Parroquia", "Municipio")) %>%
-                      mutate(parasite = fct_recode(variable, "P. falciparum" = "API_pf",
-                                                   "P. vivax" = "API_pv"),
-                             mining_cat = fct_relevel(mining_cat, "high mining", after = 1)) %>%
-                      ggplot(aes(parasite, value, fill = mining_cat)) +
-                      geom_boxplot(position=position_dodge(1), alpha = 0.5) +
-                      geom_dotplot(binaxis='y', stackdir='center', dotsize=0.5, position=position_dodge(1), alpha = 0.5,
-                                   colour = "black") +
+                             API_pv = PV * 1000/Population) %>%
+                      dplyr::select(Year, mining_cat, API_pf, API_pv) %>%
+                      melt(id.vars = c("mining_cat", "Year")) %>%
+                      ggplot(aes(x=Year, y=value, group=mining_cat)) +
+                      geom_line(alpha = 0.5, aes(group = mining_cat, colour = mining_cat)) +
                       theme_light() +
-                      xlab("") + ylab("log API") +
+                      facet_wrap(~variable, nrow = 1, labeller = labels, scales = "free_y") +
+                      xlab("Time") + ylab("API") +
                       theme(legend.title = element_blank(),
-                            axis.text.x = element_text(face = "italic")) +
-                      scale_fill_manual("", values=c(cols[10], cols[2])),
+                            legend.background = element_blank(),
+                            legend.key = element_blank(),
+                            legend.position = c(0.86, 0.8),
+                            strip.background = element_blank(),
+                            strip.text = element_text(face = "italic", colour = "black")) +
+                      scale_colour_manual("", values=c(cols[2], cols[10])),
                     labels = c("A"), font.label = list(size = 16))
 
 #######################################################################
 # Interactions between climate and deforestation
-files <- list.files("models/bym2/mods_w_nino/models_nonlinear", full.names = TRUE, pattern = "mod_p")
+files <- list.files("models/models_nonlinear", full.names = TRUE, pattern = "mod_p")
 data <- read.csv("data/inla_input/data.csv")
 
 df <- NULL
@@ -633,11 +635,14 @@ climate_plot <- ggpubr::ggarrange(ggpubr::ggarrange(
     facet_grid(Parasite~mining, 
                scales = "fixed") +
     theme(legend.position = "none",
-          plot.margin=unit(c(0.5, 0.5, 0.5, 0.5),"cm"),
           strip.text.y = element_text(face = "italic", colour = "grey20", size = 11),
           strip.text.x = element_text(colour = "grey20", size = 11),
-          strip.background = element_blank()) +
-    scale_x_continuous(breaks = seq(20, 30, 2),
+          strip.background = element_blank(),
+          panel.spacing = unit(0.8, "lines")) +
+    scale_y_continuous(limits = c(0, 5.3),
+                       breaks = seq(0,5,1)) +
+    scale_x_continuous(limits = c(20, 30),
+                       breaks = seq(20, 30, 2),
                        labels = seq(20, 30, 2),
                        expand = c(0,0)),
   df %>% subset(Variable == "precipitation") %>%
@@ -656,18 +661,20 @@ climate_plot <- ggpubr::ggarrange(ggpubr::ggarrange(
     theme(legend.position = "none",
           strip.text.y = element_text(face = "italic", colour = "grey20", size = 11),
           strip.text.x = element_text(colour = "grey20", size = 11),
-          strip.background = element_blank()) +
+          strip.background = element_blank(),
+          panel.spacing = unit(0.8, "lines")) +
     scale_y_continuous(limits = c(0, 5.3),
                        breaks = seq(0,5,1)) +
-    scale_x_continuous(breaks = seq(0, 20, 5),
-                       labels = seq(0, 20, 5),
+    scale_x_continuous(limits = c(0,18),
+                       breaks = seq(0, 18, 3),
+                       labels = seq(0, 18, 3),
                        expand = c(0,0)),
   labels = c("B", "C"),
   font.label = list(size = 16)))
 
-plot_grid(box_plot, climate_plot, 
+plot_grid(mining_timeseries, climate_plot, 
           ncol = 1, nrow = 2,
           rel_heights = c(0.75, 1),
           rel_widths = c(0.65, 1))
-ggsave("figures/fig3", device = "tiff", width = 7, height = 6, units = "in", dpi = 300)
+ggsave("figures/fig3", device = "tiff", width = 170, height = 160, units = "mm", dpi = 800)
 
