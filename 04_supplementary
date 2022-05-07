@@ -14,6 +14,141 @@ bolivar   <- subset(venezuela, venezuela$ESTADO == "Bolívar")
 
 ############################################################
 
+# Bolívar shapefile
+bolivar <- rgdal::readOGR("data/ven_shp", "Parroquias_Venezuela") %>% subset(ESTADO == "Bolívar")
+
+# rename parroquias
+bolivar$PARROQUIA[39] <- "Dalla Costa*"
+bolivar$PARROQUIA[8] <- "Dalla Costa†"
+
+bolivar$PARROQUIA[23] <- "Tumeremo"
+bolivar$PARROQUIA[6] <- "Upata"
+
+# legend labels
+parroquias <- NULL
+for (i in 1:46){
+  
+  p <- paste(i, sort(bolivar$PARROQUIA)[i])
+  
+  parroquias <- c(parroquias, p)
+}
+
+centroids <- bolivar %>% st_as_sf() %>% st_centroid()
+
+# split geometry into coordinates
+centroids_coords <- centroids %>%
+  dplyr::mutate(lon = sf::st_coordinates(.)[,1],
+                lat = sf::st_coordinates(.)[,2])
+
+centroids_coords <- centroids_coords %>% dplyr::arrange(PARROQUIA) %>%
+  dplyr::mutate(id = c(1:46))
+
+centroids_coords$id[centroids_coords$PARROQUIA == "Catedral"] <- ""
+centroids_coords$id[centroids_coords$PARROQUIA == "Simón Bolívar"] <- ""
+centroids_coords$id[centroids_coords$PARROQUIA == "Universidad"] <- ""
+centroids_coords$id[centroids_coords$PARROQUIA == "Once de Abril"] <- ""
+centroids_coords$id[centroids_coords$PARROQUIA == "Vista al Sol"] <- ""
+centroids_coords$id[centroids_coords$PARROQUIA == "Cachamay"] <- ""
+centroids_coords$id[centroids_coords$PARROQUIA == "Chirica"] <- ""
+centroids_coords$id[centroids_coords$PARROQUIA == "Dalla Costa†"] <- ""
+centroids_coords$id[centroids_coords$PARROQUIA == "Vista Hermosa"] <- ""
+centroids_coords$id[centroids_coords$PARROQUIA == "La Sabanita"] <- ""
+centroids_coords$id[centroids_coords$PARROQUIA == "Yocoima"] <- ""
+
+
+bolivar %>% st_as_sf() %>% ggplot() + 
+  geom_sf(aes(fill = PARROQUIA), colour = "black", size = 0.05) +
+  #geom_text(aes(label = PARROQUIA)) +
+  geom_text(data=centroids_coords, aes(lon, lat, label = id)) +
+  theme_void() +
+  theme(#legend.position = "bottom",
+    legend.text = element_text(size = 9),
+    legend.background = element_blank(),
+    legend.title = element_blank(),
+    legend.key.height =unit(0.2,"cm"),
+    legend.key.width = unit(0.2,"cm")) +
+  scale_fill_discrete(labels = parroquias) +
+  guides(fill=guide_legend(ncol=2))
+ggsave("figures/map", device = "tiff", width = 10, height = 10, units = "in", dpi = 800)
+
+############################################################
+
+## Fig. S2
+
+############################################################
+
+venezuela <- rgdal::readOGR("data/ven_shp", "Parroquias_Venezuela") %>% subset(ESTADO != "Z. Reclamación")
+bolivar <- subset(venezuela, venezuela$ESTADO == "Bolívar")
+
+data <- read.csv("data/inla_input/data.csv") %>%
+  subset(Month == 1 & Year == 2016) %>%
+  dplyr::select(Parroquia, Municipio, total_mines) %>%
+  dplyr::rename(mines = total_mines,
+                PARROQUIA = Parroquia,
+                MUNICIPIO = Municipio) %>% 
+  tibble::remove_rownames() 
+
+# Merge with shapefile
+data_sp <- merge(bolivar, data, by = c("PARROQUIA", "MUNICIPIO")) %>% st_as_sf()
+
+# Read in points data and select coordinates
+pts <- rbind(read.csv("data/mining/mining_pts.csv") %>% dplyr::select(X, Y),
+             read.csv("data/mining/mining_illegal_pts.csv") %>% dplyr::select(X, Y)) %>%
+  drop_na()
+
+# Convert to sp object
+pts <- SpatialPoints(pts, proj4string=CRS("+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0"))
+proj4string(venezuela) <- CRS("+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")
+
+# Extract over Venezuela
+extracted_points <- over(pts, venezuela)
+extracted_points$X <- pts@coords[,1]
+extracted_points$Y <- pts@coords[,2]
+
+# Remove points not in polygons (NAs)
+pts_in <- extracted_points[!is.na(extracted_points),]
+pts_in <- pts_in %>% subset(ESTADO != "Z. Reclamación" | ESTADO != "NA")
+
+# Shapefiles to plot
+venezuela <- sf::st_read("data/ven_shp_0/VEN_adm0.shp")
+venezuela_adm1 <- sf::st_read("data/ven_shp_0/VEN_adm1.shp")
+bolivar_adm1  <- subset(venezuela_adm1, NAME_1 == "Bolívar")
+
+# Mining categories
+data <- read.csv("data/inla_input/data.csv") %>%
+  subset(Month == 12 & Year == 2016) %>%
+  dplyr::group_by(Parroquia, Municipio) %>%
+  dplyr::mutate(total_mines = max(total_mines)) %>%
+  dplyr::ungroup() %>%
+  dplyr::select(Parroquia, Municipio, total_mines) %>%
+  dplyr::rename(total_mines = total_mines,
+                PARROQUIA = Parroquia,
+                MUNICIPIO = Municipio) %>% 
+  tibble::remove_rownames() 
+
+data$mining_cat[data$total_mines <= 2] <- "low mining"
+data$mining_cat[data$total_mines > 2] <- "high mining"
+mining_categories <- merge(bolivar, data, by = c("PARROQUIA", "MUNICIPIO")) %>% st_as_sf() 
+
+cols <- RColorBrewer::brewer.pal(11, "BrBG")
+
+ggplot() + 
+  geom_sf(data = st_as_sf(venezuela), fill = "transparent") +
+  geom_sf(data = mining_categories, aes(fill = mining_cat), colour= "grey30", size = 0.1, alpha = 0.5) +
+  geom_point(data = pts_in, aes(x=X,y=Y), colour = "red",
+             size = 0.25, alpha = 0.4, shape = 16) +
+  ylim(0,13) +
+  theme_void() +
+  scale_fill_manual(name = "",
+                    values=c(cols[2], cols[10]))
+ggsave(filename = "figures/figS2", width = 6, height = 4, units = "in", dpi = 300, device = "tiff", bg = "white")
+
+############################################################
+
+## Fig. S3
+
+############################################################
+
 # Forest loss heatmap
 data <- read.csv("data/land_use/forest_decrease/data.csv") %>%
   subset(Year > 1995 & Year < 2017) %>%
@@ -43,6 +178,8 @@ data <- data %>% dplyr::group_by(Year, Parroquia, Municipio) %>%
 # Rename Dalla Costa parroquias (two municipalities)
 data$Parroquia[data$Municipio == "Sifontes" & data$Parroquia == "Dalla Costa"] <- "Dalla Costa*"
 data$Parroquia[data$Municipio == "Caroní" & data$Parroquia == "Dalla Costa"] <- "Dalla Costa†"
+data$Parroquia[data$Parroquia == "Sifontes"] <- "Tumeremo"
+data$Parroquia[data$Parroquia == "Piar"] <- "Upata"
 
 # Log and replace NA
 data <- data %>% mutate(forest_loss = log(forest_loss)+1) %>%
@@ -105,6 +242,8 @@ data <- data %>% dplyr::group_by(Year, Parroquia, Municipio) %>%
 # Rename Dalla Costa parroquias (two municipalities)
 data$Parroquia[data$Municipio == "Sifontes" & data$Parroquia == "Dalla Costa"] <- "Dalla Costa*"
 data$Parroquia[data$Municipio == "Caroní" & data$Parroquia == "Dalla Costa"] <- "Dalla Costa†"
+data$Parroquia[data$Parroquia == "Sifontes"] <- "Tumeremo"
+data$Parroquia[data$Parroquia == "Piar"] <- "Upata"
 
 urbanization <- 
   ggplot(data, aes(Year, Parroquia)) + geom_tile(aes(fill = urbanization), 
@@ -134,13 +273,14 @@ urbanization <-
 ggpubr::ggarrange(forest_loss, urbanization, labels = c("A", "B"),
                   ncol = 1, nrow = 2,
                   font.label = list(size = 16))
-ggsave("figures/supplementary/figS1", device = "tiff", width = 6, height = 10, units = "in", dpi = 700)
+ggsave("figures/figS3", device = "tiff", width = 6, height = 10, units = "in", dpi = 700)
 
 ############################################################
 
-## Fig. S2
+## Fig. S4
 
 ############################################################
+
 bolivar <- sf::st_read("data/ven_shp/Parroquias_Venezuela.shp") %>% subset(ESTADO == "Bolívar")
 
 data <- merge(read.csv("data/inla_input/data.csv") %>%
@@ -195,88 +335,16 @@ prcp_plot <- data %>%
 ggpubr::ggarrange(temp_plot, prcp_plot, labels = c("A", "B"),
                   ncol = 1, nrow = 2,
                   font.label = list(size = 16))
-ggsave("figures/supplementary/figS2", device = "tiff", width = 5, height = 6, units = "in", dpi = 700)
-
-
-############################################################
-
-## Fig. S3
-
-############################################################
-venezuela <- rgdal::readOGR("data/ven_shp", "Parroquias_Venezuela") %>% subset(ESTADO != "Z. Reclamación")
-bolivar <- subset(venezuela, venezuela$ESTADO == "Bolívar")
-
-data <- read.csv("data/inla_input/data.csv") %>%
-  subset(Month == 1 & Year == 2016) %>%
-  dplyr::select(Parroquia, Municipio, total_mines) %>%
-  dplyr::rename(mines = total_mines,
-                PARROQUIA = Parroquia,
-                MUNICIPIO = Municipio) %>% 
-  tibble::remove_rownames() 
-
-# Merge with shapefile
-data_sp <- merge(bolivar, data, by = c("PARROQUIA", "MUNICIPIO")) %>% st_as_sf()
-
-# Read in points data and select coordinates
-pts <- rbind(read.csv("data/mining/mining_pts.csv") %>% dplyr::select(X, Y),
-             read.csv("data/mining/mining_illegal_pts.csv") %>% dplyr::select(X, Y)) %>%
-  drop_na()
-
-# Convert to sp object
-pts <- SpatialPoints(pts, proj4string=CRS("+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0"))
-proj4string(venezuela) <- CRS("+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")
-
-# Extract over Venezuela
-extracted_points <- over(pts, venezuela)
-extracted_points$X <- pts@coords[,1]
-extracted_points$Y <- pts@coords[,2]
-
-# Remove points not in polygons (NAs)
-pts_in <- extracted_points[!is.na(extracted_points),]
-pts_in <- pts_in %>% subset(ESTADO != "Z. Reclamación" | ESTADO != "NA")
-
-# Shapefiles to plot
-venezuela <- sf::st_read("data/ven_shp_0/VEN_adm0.shp")
-venezuela_adm1 <- sf::st_read("data/ven_shp_0/VEN_adm1.shp")
-bolivar_adm1  <- subset(venezuela_adm1, NAME_1 == "Bolívar")
-
-# Mining categories
-data <- read.csv("data/inla_input/data.csv") %>%
-  subset(Month == 12 & Year == 2016) %>%
-  dplyr::group_by(Parroquia, Municipio) %>%
-  dplyr::mutate(total_mines = max(total_mines)) %>%
-  dplyr::ungroup() %>%
-  dplyr::select(Parroquia, Municipio, total_mines) %>%
-  dplyr::rename(total_mines = total_mines,
-                PARROQUIA = Parroquia,
-                MUNICIPIO = Municipio) %>% 
-  tibble::remove_rownames() 
-
-data$mining_cat[data$total_mines <= 2] <- "low mining"
-data$mining_cat[data$total_mines > 2] <- "high mining"
-mining_categories <- merge(bolivar, data, by = c("PARROQUIA", "MUNICIPIO")) %>% st_as_sf() 
-
-cols <- RColorBrewer::brewer.pal(11, "BrBG")
-
-ggplot() + 
-  geom_sf(data = st_as_sf(venezuela), fill = "transparent") +
-  geom_sf(data = mining_categories, aes(fill = mining_cat), colour= "grey30", size = 0.1, alpha = 0.5) +
-  geom_point(data = pts_in, aes(x=X,y=Y), colour = "red",
-             size = 0.25, alpha = 1) +
-  ylim(0,13) +
-  theme_void() +
-  scale_fill_manual(name = "",
-                    values=c(cols[2], cols[10]))
-ggsave(filename = "figures/supplementary/figS3", width = 6, height = 4, units = "in", dpi = 300, device = "tiff")
+ggsave("figures/figS4", device = "tiff", width = 5, height = 6, units = "in", dpi = 700)
 
 ############################################################
 
-## Fig. S4
+## Fig. S5
 
 ############################################################
 
 ### Load models
-files <- list.files("models/bym2/mods_w_nino/models_nonlinear", full.names = TRUE, pattern = "mod_w_mining_p")
+files <- list.files("models/models_nonlinear", full.names = TRUE, pattern = "mod_w_mining_p")
 
 df_w_mining <- NULL
 for (i in files){
@@ -301,7 +369,7 @@ for (i in files){
                          dplyr::select(Parroquia, Municipio, mean, uci, lci, Parasite, Model))
 }
 
-files <- list.files("models/bym2/mods_w_nino/models_nonlinear", full.names = TRUE, pattern = "mod_p")
+files <- list.files("models/models_nonlinear", full.names = TRUE, pattern = "mod_p")
 
 df_mining <- NULL
 for (i in files){
@@ -330,6 +398,8 @@ mining_df <- rbind(df_mining, df_w_mining)
 mining_df$Parroquia <- as.character(mining_df$Parroquia)
 mining_df$Parroquia[mining_df$Municipio == "Sifontes" & mining_df$Parroquia == "Dalla Costa"] <- "Dalla Costa*"
 mining_df$Parroquia[mining_df$Municipio == "Caroní" & mining_df$Parroquia == "Dalla Costa"] <- "Dalla Costa†"
+mining_df$Parroquia[mining_df$Parroquia == "Sifontes"] <- "Tumeremo"
+mining_df$Parroquia[mining_df$Parroquia == "Piar"] <- "Upata"
 
 # Arrange by high mining
 mining <- read.csv("data/inla_input/data.csv") %>% 
@@ -340,6 +410,8 @@ mining <- read.csv("data/inla_input/data.csv") %>%
 mining$Parroquia <- as.character(mining$Parroquia)
 mining$Parroquia[mining$Municipio == "Sifontes" & mining$Parroquia == "Dalla Costa"] <- "Dalla Costa*"
 mining$Parroquia[mining$Municipio == "Caroní" & mining$Parroquia == "Dalla Costa"] <- "Dalla Costa†"
+mining$Parroquia[mining$Parroquia == "Sifontes"] <- "Tumeremo"
+mining$Parroquia[mining$Parroquia == "Piar"] <- "Upata"
 
 data <- merge(mining_df, mining, by = c("Municipio", "Parroquia"), all = TRUE)
 
@@ -347,6 +419,9 @@ data <- merge(mining_df, mining, by = c("Municipio", "Parroquia"), all = TRUE)
 data$Parroquia <- as.character(data$Parroquia)
 data$Parroquia[data$Municipio == "Sifontes" & data$Parroquia == "Dalla Costa"] <- "Dalla Costa*"
 data$Parroquia[data$Municipio == "Caroní" & data$Parroquia == "Dalla Costa"] <- "Dalla Costa†"
+data$Parroquia[data$Parroquia == "Sifontes"] <- "Tumeremo"
+data$Parroquia[data$Parroquia == "Piar"] <- "Upata"
+
 
 # Sort df by mining
 data <- data %>% dplyr::group_by(Parroquia, Municipio) %>%
@@ -387,78 +462,7 @@ annotate_figure(mining_models,
                                  rot = 90,
                                  vjust = 3.3)) 
 
-ggsave("figures/supplementary/figS4", device = "tiff", width = 10, height = 10, units = "cm", dpi = 700)
-
-############################################################
-
-## Fig. S5
-
-############################################################
-# Load models
-# Model estimates
-load("models/bym2/mods_w_nino/models_linear/mod_pf.RData") 
-mod_pf <- mod
-load("models/bym2/mods_w_nino/models_linear/mod_pv.RData")
-mod_pv <- mod
-
-rbind(mod_pf$summary.fixed %>%
-        dplyr::select(mean, `0.025quant`, `0.975quant`) %>%
-        mutate(Parasite = "P. falciparum",
-               Variable = rownames(mod_pf$summary.fixed)) %>%
-        dplyr::slice(-1) %>% 
-        dplyr::rename(lci = `0.025quant`,
-                      uci = `0.975quant`),
-      mod_pv$summary.fixed %>%
-        dplyr::select(mean, `0.025quant`, `0.975quant`) %>%
-        mutate(Parasite = "P. vivax",
-               Variable = rownames(mod_pv$summary.fixed)) %>%
-        dplyr::slice(-1) %>% 
-        dplyr::rename(lci = `0.025quant`,
-                      uci = `0.975quant`)) %>%
-  mutate(Variable = recode(Variable, 
-                           "temp" = "Temperature",
-                           "prcp" = "Precipitation",
-                           "forest_decrease" = "Deforestation",
-                           "health_travel"   = "Healthcare inaccessibility",
-                           "mines"           = "Mining",
-                           "urbanization"    = "Urbanization",
-                           "nino"            = "Niño 3.4")) %>%
-  # Order
-  mutate(Variable = factor(Variable, levels = c("Precipitation",
-                                                "Temperature",
-                                                "Urbanization",
-                                                "Niño 3.4",
-                                                "Healthcare inaccessibility",
-                                                "Deforestation",
-                                                "Mining"))) %>%
-  ggplot(aes(Variable, colour = Parasite)) +
-  geom_hline(yintercept = 0, linetype = "dashed", colour = "grey") +
-  geom_linerange(aes(ymin = lci, ymax = uci), position = position_dodge(width = 0.3)) +
-  geom_point(aes(x = Variable, y = mean), shape = 16, position = position_dodge(width = 0.3)) + 
-  xlab("Model covariate") + ylab("Coefficient estimate") +
-  scale_colour_manual(values = c("#571B57", "#B888B8")) +
-  coord_flip() + 
-  scale_y_continuous(name = "Estimate",
-                     position = "right",
-                     limits = c(-0.6, 1.8),
-                     breaks = seq(-0.6, 1.8, 0.4),
-                     labels = seq(-0.6, 1.8, 0.4),
-                     expand = c(0,0)) +
-  theme_classic() +
-  theme(plot.margin = unit(c(0.2, 1, 0, 0.1),"cm"),
-        legend.text = element_text(face = "italic"),
-        legend.position = c(0.9, 0.2),
-        legend.background = element_blank(),
-        legend.key = element_blank(),
-        legend.title = element_blank(),
-        legend.key.height =unit(0.8,"cm"),
-        legend.key.width = unit(0.8,"cm"),
-        axis.line.y = element_blank(),
-        axis.line.x = element_line(size = 0.2),
-        axis.ticks.x = element_line(size = 0.2),
-        axis.ticks.y = element_blank())  
-
-ggsave("figures/supplementary/figS5", device = "tiff", width = 6, height = 3.5, units = "in", dpi = 700)
+ggsave("figures/figS5", device = "tiff", width = 10, height = 10, units = "cm", dpi = 700)
 
 ############################################################
 
@@ -466,96 +470,7 @@ ggsave("figures/supplementary/figS5", device = "tiff", width = 6, height = 3.5, 
 
 ############################################################
 # Load models
-files <- list.files("models/bym2/mods_w_nino/models_nonlinear", pattern = "w_interaction_p", full.names = TRUE)
-
-data <- read.csv("data/inla_input/data.csv")
-
-df <- NULL
-for (i in files){
-  load(i)
-  if(grepl("pf", i)==TRUE){
-    parasite <- "P. falciparum" 
-  } else {
-    parasite <- "P. vivax"
-  }
-  
-  # Combine into df
-  df <- rbind(df, 
-              mod$summary.random$`inla.group(temp)` %>%
-                mutate(Parasite = parasite,
-                       Variable = "temperature") %>%
-                dplyr::rename(lci = `0.025quant`,
-                              uci = `0.975quant`) %>%
-                dplyr::select(ID, mean, uci, lci, Parasite, Variable) %>%
-                # Rescale 
-                mutate(ID = ID*sd(data$temp_avg) + mean(data$temp_avg)),
-              mod$summary.random$`inla.group(prcp)` %>%
-                mutate(Parasite = parasite,
-                       Variable = "precipitation") %>%
-                dplyr::rename(lci = `0.025quant`,
-                              uci = `0.975quant`) %>%
-                dplyr::select(ID, mean, uci, lci, Parasite, Variable) %>%
-                # Rescale 
-                mutate(ID = ID*sd(data$prcp_avg) + mean(data$prcp_avg)))
-  
-  
-}
-
-cols <- RColorBrewer::brewer.pal(11, "Spectral")
-
-# Plot
-ggpubr::ggarrange(
-  df %>% subset(Variable == "temperature") %>%
-    ggplot() + 
-    geom_hline(yintercept = 1, colour = "grey50", size = 0.3,
-               linetype = "dashed") +
-    geom_ribbon(aes(ymin=exp(uci), ymax=exp(lci), x=ID), fill = cols[2], alpha = 0.2) +
-    geom_line(aes(x= ID, y=exp(mean)), colour = cols[2]) +
-    theme_light() +
-    xlab("Average temperature (°C)") + 
-    ylab("Marginal effect\n(API)") +
-    facet_grid(~Parasite, 
-               scales = "fixed") +
-    theme(legend.position = "none",
-          plot.margin=unit(c(0.5, 0.5, 0.5, 0.5),"cm"),
-          strip.text = element_text(face = "italic", colour = "grey20", size = 11),
-          strip.background = element_blank(),
-          panel.grid = element_blank()) +
-    scale_x_continuous(breaks = seq(20, 30, 2),
-                       labels = seq(20, 30, 2),
-                       expand = c(0,0)),
-  df %>% subset(Variable == "precipitation") %>%
-    ggplot() + 
-    geom_hline(yintercept = 1, colour = "grey50", size = 0.3,
-               linetype = "dashed") +
-    geom_ribbon(aes(ymin=exp(uci), ymax=exp(lci), x=ID), fill = cols[10], alpha = 0.2) +
-    geom_line(aes(x= ID, y=exp(mean)), colour = cols[10]) +
-    theme_light() +
-    xlab("Average precipitation (mm/day)") + 
-    ylab("Marginal effect\n(API)") +
-    facet_grid(~Parasite, 
-               scales = "fixed") +
-    theme(legend.position = "none",
-          plot.margin=unit(c(0.5, 0.5, 0.5, 0.5),"cm"),
-          strip.text = element_text(face = "italic", colour = "grey20", size = 11),
-          strip.background = element_blank(),
-          panel.grid = element_blank()) +
-    scale_x_continuous(breaks = seq(0, 18, 2),
-                       labels = seq(0, 18, 2),
-                       expand = c(0,0)),
-  labels = c("A", "B"),
-  ncol = 1, nrow = 2,
-  font.label = list(size = 16))
-
-ggsave(filename = "figures/supplementary/figS6", width = 5, height = 5, units = "in", dpi = 300, device = "tiff")
-
-############################################################
-
-## Fig. S7
-
-############################################################
-# Load models
-files <- list.files("models/bym2/mods_w_nino/nino_lagged_models", pattern = "_p", full.names = TRUE)
+files <- list.files("models/nino_lagged_models", pattern = "_p", full.names = TRUE)
 
 # Get model estimates
 lagged_models <- NULL
@@ -570,7 +485,7 @@ for (i in files){
   }
   
   # Extract lag
-  lag <- gsub(".*models/bym2/mods_w_nino/nino_lagged_models/\\s*|.RData.*", "", i)
+  lag <- gsub(".*models/nino_lagged_models/\\s*|.RData.*", "", i)
   lag <- gsub(paste(p), "", lag)
   lag <- gsub("nino34_lag", "", lag)
   
@@ -590,133 +505,30 @@ for (i in files){
 lagged_models %>%
   mutate(Lag = as.factor(Lag)) %>%
   mutate(Lag = fct_relevel(Lag, as.character(0:18))) %>%
-  ggplot(aes(Variable)) +
+  ggplot(aes(Lag)) +
   geom_hline(yintercept = 0, linetype = "dashed", colour = "grey", size = 0.5) +
-  geom_point(aes(x = Variable, y = mean, colour = Lag), shape = 16, position = position_dodge(width = 0.5)) +
+  geom_point(aes(x = Lag, y = mean, colour = Lag), shape = 16, position = position_dodge(width = 0.5)) +
   geom_linerange(aes(ymin = lci, ymax = uci, colour = Lag), position = position_dodge(width = 0.5)) +
-  xlab("") + 
   facet_wrap(~Parasite, scales = "fixed") +
   coord_flip() + 
   scale_y_continuous(name = "Estimate",
                      expand = c(0,0)) +
   theme_light() +
   theme(plot.margin = unit(c(1,1,1,1),"cm"),
+        legend.position = "none",
         axis.line.y = element_blank(),
         axis.ticks.y = element_blank(),
         strip.text = element_text(face = "italic", colour = "black"),
-        strip.background = element_blank(),
-        axis.text.y = element_blank()) 
+        strip.background = element_blank())
 
-ggsave(filename = "figures/supplementary/figS7", width = 8, height = 5, units = "in", dpi = 300, device = "tiff")
-
-############################################################
-
-## Fig. S8
+ggsave(filename = "figures/figS6", width = 8, height = 5, units = "in", dpi = 300, device = "tiff")
 
 ############################################################
 
-# Friction surface from MAP
-friction <- malariaAtlas::getRaster(surface = "A global friction surface enumerating land-based travel speed for a nominal year 2015",
-                                    shp = bolivar)
-
-friction_spdf <- friction %>% as("SpatialPixelsDataFrame") %>% 
-  as.data.frame() %>%
-  dplyr::rename(speed = A.global.friction.surface.enumerating.land.based.travel.speed.for.a.nominal.year.2015)
-
-# Plot
-friction_map <- 
-  ggplot() +  
-  geom_sf(data=st_as_sf(bolivar), fill = "grey80", size = 0,
-          colour = "transparent") +
-  geom_tile(data=friction_spdf, aes(x=x, y=y, fill=speed)) +
-  theme_void() +
-  theme(legend.position = c(0.1, 0.2),
-        legend.title.align = 0.5,
-        legend.title = element_text(size = 11)) +
-  scale_fill_viridis(name = "Land-based travel speed\n(minutes to travel one metre)",
-                     option = "magma",
-                     direction = -1,
-                     guide = guide_colourbar(ticks = FALSE,
-                                             barheight = 1.5,
-                                             barwidth = 10,
-                                             direction = "horizontal", 
-                                             title.position = "top",
-                                             frame.colour = "black",
-                                             frame.linewidth = 1))
-
-# Healthsites in Bolívar
-healthsites <- read.csv("data/healthsites/venezuela_healthsites.csv") %>% 
-  # remove NA
-  subset(X != "NA" & Y != "NA") %>%
-  dplyr::select(X, Y)
-
-# Keep points only within shapefile bounds
-names(healthsites) <- c("X", "Y")
-coordinates(healthsites) <- ~X+Y
-proj4string(healthsites) <- proj4string(bolivar)
-pts_in <- over(healthsites, bolivar)
-pts_in <- healthsites[!is.na(pts_in$PARROQUIA),] %>% as_data_frame() 
-# Add variable to plot legend for sites
-pts_in$ESTADO <- "BOLIVAR"
-
-# Travel time
-data <- read.csv("data/inla_input/data.csv") %>%
-  # Subset as data are repeated for time
-  subset(Month == 1 & Year == 2016) %>%
-  dplyr::select(Parroquia, Municipio, health_travel_time) %>%
-  dplyr::rename(PARROQUIA = Parroquia,
-                MUNICIPIO = Municipio) %>%
-  tibble::remove_rownames()
-
-# Merge with shapefile
-data_sp <- merge(bolivar, data, by = c("PARROQUIA", "MUNICIPIO")) %>% st_as_sf()
-
-healthsites_map <- 
-  data_sp %>% ggplot() + 
-  geom_sf(aes(fill = health_travel_time), colour = "transparent") +
-  geom_point(data = as_data_frame(pts_in), aes(x=X,y=Y, colour = ESTADO),
-             size = 0.8, alpha = 1) +
-  theme_void() +
-  ylab("") + xlab("") +
-  theme(axis.text = element_blank(),
-        axis.ticks = element_blank(),
-        legend.background = element_blank(),
-        legend.margin=unit(0.5, "cm"),
-        legend.title = element_text(size = 11),
-        legend.title.align = 0.1,
-        legend.position = c(0.1, 0.2),
-        legend.direction = "horizontal",
-        plot.margin = unit(c(0.1, 0.1, 0.1, 0.1),"cm")) +
-  guides(colour = guide_legend(order = 1, override.aes = list(size=2.5))) +
-  scale_fill_gradient2(name = c(expression(paste("Increasing travel time") %->% paste(""))),
-                       low = "#feeafa",
-                       mid = "#efd3d7",
-                       high = "#8e9aaf",
-                       labels=function(x) format(x, big.mark = ",", scientific = FALSE),
-                       guide = guide_colourbar(ticks = FALSE,
-                                               barheight = 1.5,
-                                               barwidth = 10,
-                                               title.position = "top",
-                                               frame.colour = "black",
-                                               frame.linewidth = 1)) +
-  scale_colour_manual(name = "Healthsites",
-                      labels = c("", ""),
-                      values = c("grey35", "transparent")) 
-
-# Combine 
-ggarrange(friction_map,
-          healthsites_map,
-          nrow = 2, ncol = 1,
-          labels = c("A", "B"),
-          font.label = list(size = 20))
-
-ggsave("figures/supplementary/figS8", device = "tiff", width = 8, height = 10, units = "in", dpi = 300)
+## Fig. S7
 
 ############################################################
 
-## Fig. S9
-
-############################################################
 
 ### Mining and deforestation 
 # Read in data
@@ -814,7 +626,166 @@ p <- ggarrange(mining_plot,
                font.label = list(size = 26),
                nrow = 2, ncol = 1)
 
-ggsave(filename = "figures/supplementary/figS9", p, width = 8, height = 10, units = "in", dpi = 300, device = "tiff")
+ggsave(filename = "figures/figS7", p, width = 8, height = 10, units = "in", dpi = 300, device = "tiff")
+
+############################################################
+
+## Fig. S8
+
+############################################################
+
+# Load models
+# Model estimates
+load("models/models_linear/mod_pf.RData") 
+mod_pf <- mod
+load("models/models_linear/mod_pv.RData")
+mod_pv <- mod
+
+rbind(mod_pf$summary.fixed %>%
+        dplyr::select(mean, `0.025quant`, `0.975quant`) %>%
+        mutate(Parasite = "P. falciparum",
+               Variable = rownames(mod_pf$summary.fixed)) %>%
+        dplyr::slice(-1) %>% 
+        dplyr::rename(lci = `0.025quant`,
+                      uci = `0.975quant`),
+      mod_pv$summary.fixed %>%
+        dplyr::select(mean, `0.025quant`, `0.975quant`) %>%
+        mutate(Parasite = "P. vivax",
+               Variable = rownames(mod_pv$summary.fixed)) %>%
+        dplyr::slice(-1) %>% 
+        dplyr::rename(lci = `0.025quant`,
+                      uci = `0.975quant`)) %>%
+  mutate(Variable = recode(Variable, 
+                           "temp" = "Temperature",
+                           "prcp" = "Precipitation",
+                           "forest_decrease" = "Deforestation",
+                           "mines"           = "Mining",
+                           "urbanization"    = "Urbanization",
+                           "nino"            = "Niño 3.4")) %>%
+  # Order
+  mutate(Variable = factor(Variable, levels = c("Precipitation",
+                                                "Temperature",
+                                                "Urbanization",
+                                                "Niño 3.4",
+                                                "Deforestation",
+                                                "Mining"))) %>%
+  ggplot(aes(Variable, colour = Parasite)) +
+  geom_hline(yintercept = 1, linetype = "dashed", colour = "grey") +
+  geom_linerange(aes(ymin = exp(lci), ymax = exp(uci)), position = position_dodge(width = 0.3)) +
+  geom_point(aes(x = Variable, y = exp(mean)), shape = 16, position = position_dodge(width = 0.3)) + 
+  xlab("Model covariate") + ylab("Coefficient estimate") +
+  scale_colour_manual(values = c("#571B57", "#B888B8")) +
+  coord_flip() + 
+  scale_y_continuous(name = "Effect size",
+                     position = "right",
+                     limits = c(0.5, 6),
+                     breaks = seq(0.5, 6, 0.5),
+                     expand = c(0,0)) +
+  theme_classic() +
+  theme(plot.margin = unit(c(0.2, 1, 0, 0.1),"cm"),
+        legend.text = element_text(face = "italic"),
+        legend.position = c(0.9, 0.2),
+        legend.background = element_blank(),
+        legend.key = element_blank(),
+        legend.title = element_blank(),
+        legend.key.height =unit(0.8,"cm"),
+        legend.key.width = unit(0.8,"cm"),
+        axis.line.y = element_blank(),
+        axis.line.x = element_line(size = 0.2),
+        axis.ticks.x = element_line(size = 0.2),
+        axis.ticks.y = element_blank())  
+
+ggsave("figures/figS8", device = "tiff", width = 6, height = 3.5, units = "in", dpi = 700)
+
+############################################################
+
+## Fig. S9
+
+############################################################
+
+# Load models
+files <- list.files("models/models_nonlinear", pattern = "w_interaction_p", full.names = TRUE)
+
+data <- read.csv("data/inla_input/data.csv")
+
+df <- NULL
+for (i in files){
+  load(i)
+  if(grepl("pf", i)==TRUE){
+    parasite <- "P. falciparum" 
+  } else {
+    parasite <- "P. vivax"
+  }
+  
+  # Combine into df
+  df <- rbind(df, 
+              mod$summary.random$`inla.group(temp)` %>%
+                mutate(Parasite = parasite,
+                       Variable = "temperature") %>%
+                dplyr::rename(lci = `0.025quant`,
+                              uci = `0.975quant`) %>%
+                dplyr::select(ID, mean, uci, lci, Parasite, Variable) %>%
+                # Rescale 
+                mutate(ID = ID*sd(data$temp_avg) + mean(data$temp_avg)),
+              mod$summary.random$`inla.group(prcp)` %>%
+                mutate(Parasite = parasite,
+                       Variable = "precipitation") %>%
+                dplyr::rename(lci = `0.025quant`,
+                              uci = `0.975quant`) %>%
+                dplyr::select(ID, mean, uci, lci, Parasite, Variable) %>%
+                # Rescale 
+                mutate(ID = ID*sd(data$prcp_avg) + mean(data$prcp_avg)))
+  
+  
+}
+
+cols <- RColorBrewer::brewer.pal(11, "Spectral")
+
+# Plot
+ggpubr::ggarrange(
+  df %>% subset(Variable == "temperature") %>%
+    ggplot() + 
+    geom_hline(yintercept = 1, colour = "grey50", size = 0.3,
+               linetype = "dashed") +
+    geom_ribbon(aes(ymin=exp(uci), ymax=exp(lci), x=ID), fill = cols[2], alpha = 0.2) +
+    geom_line(aes(x= ID, y=exp(mean)), colour = cols[2]) +
+    theme_light() +
+    xlab("Average temperature (°C)") + 
+    ylab("Effect size\n(API)") +
+    facet_grid(~Parasite, 
+               scales = "fixed") +
+    theme(legend.position = "none",
+          plot.margin=unit(c(0.5, 0.5, 0.5, 0.5),"cm"),
+          strip.text = element_text(face = "italic", colour = "grey20", size = 11),
+          strip.background = element_blank(),
+          panel.grid = element_blank()) +
+    scale_x_continuous(breaks = seq(20, 30, 2),
+                       labels = seq(20, 30, 2),
+                       expand = c(0,0)),
+  df %>% subset(Variable == "precipitation") %>%
+    ggplot() + 
+    geom_hline(yintercept = 1, colour = "grey50", size = 0.3,
+               linetype = "dashed") +
+    geom_ribbon(aes(ymin=exp(uci), ymax=exp(lci), x=ID), fill = cols[10], alpha = 0.2) +
+    geom_line(aes(x= ID, y=exp(mean)), colour = cols[10]) +
+    theme_light() +
+    xlab("Average precipitation (mm/day)") + 
+    ylab("Effect size\n(API)") +
+    facet_grid(~Parasite, 
+               scales = "fixed") +
+    theme(legend.position = "none",
+          plot.margin=unit(c(0.5, 0.5, 0.5, 0.5),"cm"),
+          strip.text = element_text(face = "italic", colour = "grey20", size = 11),
+          strip.background = element_blank(),
+          panel.grid = element_blank()) +
+    scale_x_continuous(breaks = seq(0, 18, 2),
+                       labels = seq(0, 18, 2),
+                       expand = c(0,0)),
+  labels = c("A", "B"),
+  ncol = 1, nrow = 2,
+  font.label = list(size = 16))
+
+ggsave(filename = "figures/figS9", width = 5, height = 5, units = "in", dpi = 300, device = "tiff")
 
 ############################################################
 
@@ -822,7 +793,7 @@ ggsave(filename = "figures/supplementary/figS9", p, width = 8, height = 10, unit
 
 ############################################################
 
-files <- list.files("models/bym2/mods_w_nino/models_linear", pattern = "mod_p", full.names = TRUE)
+files <- list.files("models/models_linear", pattern = "mod_p", full.names = TRUE)
 linear_models <- NULL
 for (i in files){
   
@@ -842,7 +813,9 @@ for (i in files){
                                     WAIC = mod$waic$waic))
 }
 
-files <- list.files("models/bym2/mods_w_nino/models_nonlinear", pattern = "mod_p", full.names = TRUE) 
+linear_models
+
+files <- list.files("models/models_nonlinear", pattern = "mod_p", full.names = TRUE) 
 nonlinear_models <- NULL
 for (i in files){
   
@@ -861,3 +834,5 @@ for (i in files){
                                        DIC   = mod$dic$dic,
                                        WAIC = mod$waic$waic))
 }
+
+nonlinear_models
